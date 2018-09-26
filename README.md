@@ -40,7 +40,7 @@ as json like this:
 publish the command according to the [documentation](http://www.rflink.nl/blog2/protref) to the topic
 
 ```
-RFLink/cmd
+rflink/cmd
 ```
 
 e.g.
