@@ -27,7 +27,7 @@ When RFLink receives something this is presented on the serial line eg.:
 This software published this to the topics:
 
 ```
-RFLink/Xiron-2801
+rflink/Xiron-2801
 ```
 as json like this:
 ```
