@@ -50,9 +50,10 @@ as json like this:
 ```
 
 ## How to send commands
-### normal
 
-publish the command according to the [documentation](http://www.rflink.nl/blog2/protref) to the topic
+### MQTT
+
+Publish the command according to the [documentation](http://www.rflink.nl/blog2/protref) to the topic
 
 ```
 rflink/cmd
@@ -62,6 +63,10 @@ e.g.
 ```
 10;NewKaku;01dd77d5;1;OFF;
 ```
+### Web interface
+
+On the web interface main page, use the form  or a predefined command button
 
 # Watchout
+
 Use it at your own risk!!!
