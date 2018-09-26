@@ -17,7 +17,7 @@ struct USER_CMD_STRUCT {        // Preconfigured commands to show on web interfa
  * Parameters for IDs filtering and serial comm, see other parameters in Common.h
 /*********************************************************************************/
 
-#define USER_ID_NUMBER 2             // *MUST* be equal to USER_IDs number of lines OR set to 0 to publish all IDs with no condition
+#define USER_ID_NUMBER 0             // *MUST* be equal to USER_IDs number of lines OR set to 0 to publish all IDs with no condition
 
 
 const USER_ID_STRUCT USER_IDs[] = {    // Configure IDs that will be forwared to MQTT server, interval time to force publish if data did not change (in ms), and description
@@ -30,8 +30,6 @@ const USER_CMD_STRUCT USER_CMDs[] = {    // Configure commands to show on web in
   { "Version"    ,  "10;version;"                           },
   { "Status"     ,  "10;status;"                            },
   { "Reboot"     ,  "10;reboot;"                            },
-  { "01dd77d5 ON"    ,  "10;NewKaku;01dd77d5;1;OFF;"             },
-  { "01dd77d5 OFF"    ,  "10;NewKaku;01dd77d5;1;OFF;"             },
 };
 
 // Serial configuration
@@ -783,7 +781,7 @@ void loop() {
 						
                         readRfLinkPacket(BUFFER);
 						
-                        if (strcmp(MQTT_NAME,"Auriol_V3") == 0) strcpy( MQTT_ID , "0001");  // XXX force unique ID for device changing frequently
+                        //if (strcmp(MQTT_NAME,"Auriol_V3") == 0) strcpy( MQTT_ID , "0001");  // XXX force unique ID for device changing frequently
                         
                         // construct topic name to publish to
                         buildMqttTopic(MQTT_NAME, MQTT_ID);
