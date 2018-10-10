@@ -69,6 +69,8 @@ e.g.
 
 On the web interface main page, use the form  or a predefined command button
 
+![alt tag](https://i.imgur.com/Xl1tLUz.png "espRFLink")
+
 # Watchout
 
 Use it at your own risk!!!
