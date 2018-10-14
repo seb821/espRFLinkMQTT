@@ -10,10 +10,10 @@
  * - create a JSON message with all encountered fields
  */
 void readRfLinkPacket(char* line) {
-		//strcpy("",MQTT_NAME);strcpy("",MQTT_ID);strcpy("",JSON);
         int i = 6; // ignore message type and line number
         int j = 0;
         bool nameHasEq = false;
+        bool nameHasDash = false;
 
         // check len and ignore bad packet (broken serial, etc.)
         if(strlen(line) < RFLINK_PACKET_MIN_SIZE) return;
@@ -23,7 +23,7 @@ void readRfLinkPacket(char* line) {
                 if      (line[i]==' ') MQTT_NAME[j] = '_';
                 else if (line[i]=='=')  { nameHasEq = true; break; }
                 else MQTT_NAME[j] = line[i];
-				if (line[i]=='-')  { nameHasEq = true; }			// to handle Internal_Pullup_on_RF-in (missing ";") to improve
+				if (line[i]=='-')  { nameHasDash = true; }			// to handle Internal_Pullup_on_RF-in_disabled (missing ";") to improve
                 i++; j++;
         }
 
@@ -33,14 +33,26 @@ void readRfLinkPacket(char* line) {
         // if name contains "=", assumes that it's an rflink message, not an RF packet
         // thus we put a special name and ID=0, then parse to JSON
         if(nameHasEq==true) {
-                Serial.println(F("name contains '=' !"));
+                //Serial.println(F("name contains '=' !"));
                 i = 6;
                 strcpy_P(MQTT_NAME,PSTR("message"));
                 MQTT_ID[0]='0'; MQTT_ID[1]='\0';
                 readRfLinkFields(line, i);
                 return;
         }
-
+		
+        if(nameHasDash==true) {
+                i = 6;
+                strcpy_P(MQTT_NAME,PSTR("message"));
+                MQTT_ID[0]='0'; MQTT_ID[1]='\0';
+				j=0;
+				while(line[i] != '\n' && i < BUFFER_SIZE && j < BUFFER_SIZE) {
+						JSON[j++] = line[i++];
+				}
+				JSON[j-1]='\0';
+                return;
+        }
+		
         if ( strcmp(MQTT_NAME,"STATUS") == 0){
           // Meldung STATUS
           MQTT_ID[0]='0'; MQTT_ID[1]='\0';
@@ -48,18 +60,24 @@ void readRfLinkPacket(char* line) {
           readRfLinkFields(line, i);
           return;
         }
-
+		
         if (strncmp_P(MQTT_NAME,RFLINK_MQTT_NAME_NODO,12) == 0)
         {
-          strcpy_P(MQTT_NAME,RFLINK_MQTT_NAME_NODO);
-          MQTT_ID[0]='0'; MQTT_ID[1]='\0';
-          strcpy(JSON,line+6);
-          return;
+			strcpy_P(MQTT_NAME,RFLINK_MQTT_NAME_NODO);
+			MQTT_ID[0]='0'; MQTT_ID[1]='\0';
+			//strcpy(JSON,line+6);
+			j=0;
+			i++; // Skip ;
+			while(line[i] != '\n' && i < BUFFER_SIZE && j < BUFFER_SIZE) {
+					JSON[j++] = line[i++];
+			}
+			JSON[j-1]='\0';
+			return;
         }
 
         // for debug and ACK messages, send them directly, no json convertion
         if(RfLinkIsStringInArray(MQTT_NAME,RFLINK_MQTT_NAMES_NO_JSON)) {
-                Serial.println(F("Special name found => no JSON convertion"));
+                //Serial.println(F("Special name found => no JSON convertion"));
                 MQTT_ID[0]='0'; MQTT_ID[1]='\0';
                 j=0;
                 i++; // Skip ;
@@ -67,6 +85,7 @@ void readRfLinkPacket(char* line) {
                         JSON[j++] = line[i++];
                 }
                 JSON[j-1]='\0';
+
                 return;
         }
 
@@ -224,7 +243,7 @@ void RfLinkFieldAddQuotedValue(char *buffer) {
  * convert a string to float value and put it in the JSON buffer ; if is starts by 8, it is a negative value
  * eg : 0x8066 will become -10.2
  */
-void RfLinkFieldAddHexFloat10NegValue(char *buffer) {                  // for TMP, WINCHL and WINTMP
+void RfLinkFieldAddHexFloat10NegValue(char *buffer) {                  	// for TMP, WINCHL and WINTMP
         char strfloat[10];
         if (buffer[0] == 56) {                                          // if first char is a 8 (code ascii 56), it is a negative temp
           buffer[0] = 48;                                               // replace char 8 by char 0 (code ascii 48)

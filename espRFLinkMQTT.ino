@@ -37,33 +37,49 @@ const USER_CMD_STRUCT USER_CMDs[] = {    // Configure commands to show on web in
   SoftwareSerial softSerial(4, 2, false,BUFFER_SIZE+2); // software RX from GPIO4/D2 pin (unused pin on ESP01), software TX to RFLink on GPIO2/D4 pin
   auto& debugSerialTX = Serial;                         // debugSerialTX is to show information - use Serial to write on hardware serial (ESP TX pin) 
   auto& rflinkSerialRX = Serial;                        // rflinkSerialRX is for data from RFLink - use softSerial to listen on software serial, use Serial to listen on hardware serial (ESP RX pin)
-  auto& rflinkSerialTX = softSerial;                    // rflinkSerialTX is for data to RFLink - use softSerial to write on software serial, use Serial to write on hardware serial (ESP TX pin)
+  auto& rflinkSerialTX = softSerial;                    // rflinkSerialTX is for data to RFLink - use softSerial (GPIO2/D4) to write on software serial, use Serial to write on hardware serial (ESP TX pin)
 
 /*********************************************************************************
  * Global Variables
 /*********************************************************************************/
 
-bool MQTT_DEBUG = 0;                   // debug variable to publish received data on MQTT debug topic ; default is disabled, can be enabled from web interface
+//#define SERIAL_DEBUG			// comment to disable debug functions
+#if defined(SERIAL_DEBUG) /** Serial debug functions */
+	//#define DEBUG_BEGIN(x)   	debugSerialTX.begin(x)
+	#define DEBUG_PRINT(x)   	debugSerialTX.print(x)
+	#define DEBUG_PRINTF(x,y)  	debugSerialTX.printf(x,y)
+	#define DEBUG_PRINTLN(x) 	debugSerialTX.println(x)
+	#define DEBUG_WRITE(x,y)   	debugSerialTX.write(x,y)
+#else
+	//#define DEBUG_BEGIN(x)   	{}
+	#define DEBUG_PRINT(x)   	{}
+	#define DEBUG_PRINTF(x,y)  	{}
+	#define DEBUG_PRINTLN(x) 	{}
+	#define DEBUG_WRITE(x, y) 	{}
+#endif
+  
+bool MQTT_DEBUG = 0;		// debug variable to publish received data on MQTT debug topic ; default is disabled, can be enabled from web interface
 
 long lastUptime = - 5 * 1000 * 60;     // timer to publish uptime on MQTT server ; sufficient negative value forces update at startup
 long uptimeInterval = 5 * 1000 * 60;   // publish uptime every 5 min
 long now;
 
 struct USER_ID_STRUCT_ALL {
-  char id[8];                 // ID
-  long publish_interval;      // interval to publish (ms) if data did not change
-  char description[60];       // description
-  char json[BUFFER_SIZE];     // store last json message
-  long last_published;        // store last publish (millis)
-  long last_received;         // store last received (millis)
+  char id[8];              	// ID
+  long publish_interval;  	// interval to publish (ms) if data did not change
+  char description[60];    	// description
+  char json[BUFFER_SIZE]; 	// store last json message
+  long last_published;    	// store last publish (millis)
+  long last_received;     	// store last received (millis)
 };
 
 USER_ID_STRUCT_ALL matrix[USER_ID_NUMBER];
 
 // main input / output buffers
 char BUFFER [BUFFER_SIZE];
-char BUFFER_DEBUG [BUFFER_SIZE + 5 + MAX_DATA_LEN + 5 + MAX_DATA_LEN + 5 + MAX_TOPIC_LEN + 5];
+char BUFFER_DEBUG [5 + BUFFER_SIZE + 5 + MAX_DATA_LEN + 5 + MAX_DATA_LEN + 5 + MAX_TOPIC_LEN + 5 + BUFFER_SIZE + 5];
 char JSON   [BUFFER_SIZE];
+char JSON_DEBUG   [BUFFER_SIZE];
 
 // message builder buffers
 char MQTT_NAME[MAX_DATA_LEN];
@@ -82,19 +98,20 @@ ESP8266HTTPUpdateServer httpUpdater;                           // Firmware webup
 
 void setup_wifi() {
         delay(10);
-        //debugSerialTX.print("Connecting to ");
-        //debugSerialTX.print(WIFI_SSID); debugSerialTX.println(" ...");
+        DEBUG_PRINT("Connecting to ");
+        DEBUG_PRINT(WIFI_SSID); DEBUG_PRINTLN(" ...");
         WiFi.hostname(MQTT_RFLINK_CLIENT_NAME);
-        WiFi.begin(WIFI_SSID,WIFI_PASSWORD);                                  // Connect to the network
+		WiFi.mode(WIFI_STA); 											// Act as wifi_client only, defaults to act as both a wifi_client and an access-point.
+        WiFi.begin(WIFI_SSID,WIFI_PASSWORD);                            // Connect to the network
         int i = 0;
-        while (WiFi.status() != WL_CONNECTED) {                               // Wait for the Wi-Fi to connect
+        while (WiFi.status() != WL_CONNECTED) {                         // Wait for the Wi-Fi to connect
           delay(1000);
-          //debugSerialTX.print(++i); debugSerialTX.print(' ');
+          DEBUG_PRINT(++i); DEBUG_PRINT(' ');
         }
-        //debugSerialTX.println('\n');
-        //debugSerialTX.println("WiFi connected");
-        //debugSerialTX.print("IP address:\t ");
-        //debugSerialTX.println(WiFi.localIP());
+        DEBUG_PRINTLN('\n');
+        DEBUG_PRINTLN("WiFi connected");
+        DEBUG_PRINT("IP address:\t ");
+        DEBUG_PRINTLN(WiFi.localIP());
 }
 
 /**
@@ -104,10 +121,11 @@ void setup_wifi() {
 void callback(char* topic, byte* payload, unsigned int len) {
         rflinkSerialTX.write(payload, len);
         rflinkSerialTX.print(F("\r\n"));
-        //debugSerialTX.println(F("=== MQTT command ==="));
-        //debugSerialTX.print(F("message = "));
-        //debugSerialTX.write(payload, len);
-        //debugSerialTX.print(F("\r\n"));
+        DEBUG_PRINTLN(F("=== MQTT command ==="));
+        DEBUG_PRINT(F("message = "));
+        DEBUG_WRITE(payload, len);
+		
+        DEBUG_PRINT(F("\r\n"));
 }
 
 /**
@@ -129,14 +147,14 @@ void buildMqttTopic(char *name, char *ID) {
  */
  
 void printToSerial() {
-        debugSerialTX.println();
-        debugSerialTX.println(F("=== RFLink packet ==="));
-        debugSerialTX.print(F("Raw data = ")); debugSerialTX.print(BUFFER);
-        debugSerialTX.print(F("MQTT topic = "));
-        debugSerialTX.print(MQTT_TOPIC);
-        debugSerialTX.print("/ => ");
-        debugSerialTX.println(JSON);
-        debugSerialTX.println();
+        DEBUG_PRINTLN();
+        DEBUG_PRINTLN(F("=== RFLink packet ==="));
+        DEBUG_PRINT(F("Raw data = ")); DEBUG_PRINT(BUFFER);
+        DEBUG_PRINT(F("MQTT topic = "));
+        DEBUG_PRINT(MQTT_TOPIC);
+        DEBUG_PRINT("/ => ");
+        DEBUG_PRINTLN(JSON);
+        DEBUG_PRINTLN();
 }
 
 /**
@@ -152,8 +170,8 @@ boolean MqttConnect() {
         }
 
         // report mqtt connection status
-        debugSerialTX.print(F("MQTT connection state : "));
-        debugSerialTX.println(MQTTClient.state());
+        DEBUG_PRINT(F("MQTT connection state : "));
+        DEBUG_PRINTLN(MQTTClient.state());
         return MQTTClient.connected();
 }
 
@@ -167,24 +185,24 @@ void SetupOTA() {
   ArduinoOTA.setHostname(MQTT_RFLINK_CLIENT_NAME);                  // Hostname defaults to esp8266-[ChipID]
   
   ArduinoOTA.onStart([]() {
-    debugSerialTX.println("Start OTA");
+    DEBUG_PRINTLN("Start OTA");
   });
 
   ArduinoOTA.onEnd([]() {
-    debugSerialTX.println("End OTA");
+    DEBUG_PRINTLN("End OTA");
   });
 
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    debugSerialTX.printf("Progress: %u%%\n", (progress / (total / 100)));
+    DEBUG_PRINTF("Progress: %u%%\n", (progress / (total / 100)));
   });
 
   ArduinoOTA.onError([](ota_error_t error) {
-    debugSerialTX.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) debugSerialTX.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) debugSerialTX.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) debugSerialTX.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) debugSerialTX.println("Receive Failed");
-    else if (error == OTA_END_ERROR) debugSerialTX.println("End Failed");
+    DEBUG_PRINTF("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) DEBUG_PRINTLN("Auth Failed")
+    else if (error == OTA_BEGIN_ERROR) DEBUG_PRINTLN("Begin Failed")
+    else if (error == OTA_CONNECT_ERROR) DEBUG_PRINTLN("Connect Failed")
+    else if (error == OTA_RECEIVE_ERROR) DEBUG_PRINTLN("Receive Failed")
+    else if (error == OTA_END_ERROR) DEBUG_PRINTLN("End Failed")
   });
 
 };
@@ -198,7 +216,7 @@ char cssEspEasy[] = ""     // CSS
 	"* {font-family: sans-serif; font-size: 12pt; margin: 0px; padding: 0px; box-sizing: border-box; }h1 {font-size: 16pt; color: #07D; margin: 8px 0; font-weight: bold; }h2 {font-size: 12pt; margin: 0 -4px; padding: 6px; background-color: #444; color: #FFF; font-weight: bold; }h3 {font-size: 12pt; margin: 16px -4px 0 -4px; padding: 4px; background-color: #EEE; color: #444; font-weight: bold; }h6 {font-size: 10pt; color: #07D; }pre, xmp, code, kbd, samp, tt{ font-family:monospace,monospace; font-size:1em; }.button {margin: 4px; padding: 4px 16px; background-color: #07D; color: #FFF; text-decoration: none; border-radius: 4px; border: none;}.button.link { }.button.link.wide {display: inline-block; width: 100%; text-align: center;}.button.link.red {background-color: red;}.button.help {padding: 2px 4px; border-style: solid; border-width: 1px; border-color: gray; border-radius: 50%; }.button:hover {background: #369; }input, select, textarea {margin: 4px; padding: 4px 8px; border-radius: 4px; background-color: #eee; border-style: solid; border-width: 1px; border-color: gray;}input:hover {background-color: #ccc; }input.wide {max-width: 500px; width:80%; }input.widenumber {max-width: 500px; width:100px; }#selectwidth {max-width: 500px; width:80%; padding: 4px 8px;}select:hover {background-color: #ccc; }.container {display: block; padding-left: 35px; margin-left: 4px; margin-top: 0px; position: relative; cursor: pointer; font-size: 12pt; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }.container input {position: absolute; opacity: 0; cursor: pointer;  }.checkmark {position: absolute; top: 0; left: 0; height: 25px;  width: 25px;  background-color: #eee; border-style: solid; border-width: 1px; border-color: gray;  border-radius: 4px;}.container:hover input ~ .checkmark {background-color: #ccc; }.container input:checked ~ .checkmark { background-color: #07D; }.checkmark:after {content: ''; position: absolute; display: none; }.container input:checked ~ .checkmark:after {display: block; }.container .checkmark:after {left: 7px; top: 3px; width: 5px; height: 10px; border: solid white; border-width: 0 3px 3px 0; -webkit-transform: rotate(45deg); -ms-transform: rotate(45deg); transform: rotate(45deg); }.container2 {display: block; padding-left: 35px; margin-left: 9px; margin-bottom: 20px; position: relative; cursor: pointer; font-size: 12pt; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }.container2 input {position: absolute; opacity: 0; cursor: pointer;  }.dotmark {position: absolute; top: 0; left: 0; height: 26px;  width: 26px;  background-color: #eee; border-style: solid; border-width: 1px; border-color: gray; border-radius: 50%;}.container2:hover input ~ .dotmark {background-color: #ccc; }.container2 input:checked ~ .dotmark { background-color: #07D;}.dotmark:after {content: ''; position: absolute; display: none; }.container2 input:checked ~ .dotmark:after {display: block; }.container2 .dotmark:after {top: 8px; left: 8px; width: 8px; height: 8px; border-radius: 50%; background: white; }#toastmessage {visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #07D;color: #fff;  text-align: center;  border-radius: 4px;  padding: 16px;  position: fixed;z-index: 1; left: 282px; bottom: 30%;  font-size: 17px;  border-style: solid; border-width: 1px; border-color: gray;}#toastmessage.show {visibility: visible; -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s; animation: fadein 0.5s, fadeout 0.5s 2.5s; }@-webkit-keyframes fadein {from {bottom: 20%; opacity: 0;} to {bottom: 30%; opacity: 0.9;} }@keyframes fadein {from {bottom: 20%; opacity: 0;} to {bottom: 30%; opacity: 0.9;} }@-webkit-keyframes fadeout {from {bottom: 30%; opacity: 0.9;} to {bottom: 0; opacity: 0;} }@keyframes fadeout {from {bottom: 30%; opacity: 0.9;} to {bottom: 0; opacity: 0;} }.level_0 { color: #F1F1F1; }.level_1 { color: #FCFF95; }.level_2 { color: #9DCEFE; }.level_3 { color: #A4FC79; }.level_4 { color: #F2AB39; }.level_9 { color: #FF5500; }.logviewer {  color: #F1F1F1; background-color: #272727;  font-family: 'Lucida Console', Monaco, monospace;  height:  530px; max-width: 1000px; width: 80%; padding: 4px 8px;  overflow: auto;   border-style: solid; border-color: gray; }textarea {max-width: 1000px; width:80%; padding: 4px 8px; font-family: 'Lucida Console', Monaco, monospace; }textarea:hover {background-color: #ccc; }table.normal th {padding: 6px; background-color: #444; color: #FFF; border-color: #888; font-weight: bold; }table.normal td {padding: 4px; height: 30px;}table.normal tr {padding: 4px; }table.normal {color: #000; width: 100%; min-width: 420px; border-collapse: collapse; }table.multirow th {padding: 6px; background-color: #444; color: #FFF; border-color: #888; font-weight: bold; }table.multirow td {padding: 4px; text-align: center;  height: 30px;}table.multirow tr {padding: 4px; }table.multirow tr:nth-child(even){background-color: #DEE6FF; }table.multirow {color: #000; width: 100%; min-width: 420px; border-collapse: collapse; }tr.highlight td { background-color: #dbff0075; }.note {color: #444; font-style: italic; }.headermenu {position: fixed; top: 0; left: 0; right: 0; height: 90px; padding: 8px 12px; background-color: #F8F8F8; border-bottom: 1px solid #DDD; z-index: 1;}.apheader {padding: 8px 12px; background-color: #F8F8F8;}.bodymenu {margin-top: 96px;}.menubar {position: inherit; top: 55px; }.menu {float: left; padding: 4px 16px 8px 16px; color: #444; white-space: nowrap; border: solid transparent; border-width: 4px 1px 1px; border-radius: 4px 4px 0 0; text-decoration: none; }.menu.active {color: #000; background-color: #FFF; border-color: #07D #DDD #FFF; }.menu:hover {color: #000; background: #DEF; }.menu_button {display: none;}.on {color: green; }.off {color: red; }.div_l {float: left; }.div_r {float: right; margin: 2px; padding: 1px 10px; border-radius: 4px; background-color: #080; color: white; }.div_br {clear: both; }.alert {padding: 20px; background-color: #f44336; color: white; margin-bottom: 15px; }.warning {padding: 20px; background-color: #ffca17; color: white; margin-bottom: 15px; }.closebtn {margin-left: 15px; color: white; font-weight: bold; float: right; font-size: 22px; line-height: 20px; cursor: pointer; transition: 0.3s; }.closebtn:hover {color: black; }section{overflow-x: auto; width: 100%; }@media screen and (max-width: 960px) {span.showmenulabel { display: none; }.menu { max-width: 11vw; max-width: 48px; }\r\n";
   
 char cssDatasheet[] = ""     // CSS
-		// force some changes in CSS compared to ESP Easy Mega
+	""	// force some changes in CSS compared to ESP Easy Mega
 	"<style>table.multirow td {text-align: left; font-size:0.9em;} h3 {margin: 16px 0px 0px 0px;}\r\n"
 	"table.condensed td {padding: 0px 20px 0px 5px; height: 1em;}table.condensed tr {padding: 0px; }table.condensed {padding: 0px;border-left:1px solid #EEE;}\r\n"
 	"</style>\r\n";
@@ -208,6 +226,7 @@ void ConfigHTTPserver() {
   httpserver.on("/esp.css",[](){       // CSS EspEasy
   
     String cssMessage = String(cssEspEasy);
+	httpserver.sendHeader("Access-Control-Max-Age", "86400");
 	httpserver.send(200, "text/css", cssMessage);
 	
   });
@@ -249,19 +268,14 @@ void ConfigHTTPserver() {
     // Live data
     htmlMessage += "<h3>RFLink Live Data *</h3>\r\n";
 
-    //htmlMessage += "<iframe name=\"livedataframe\" id=\"livedataframe\" frameborder=\"0\" border=\"0\" cellspacing=\"0\" src=\"live-data\" style=\"height:25em;width:100%;border:none;\"></iframe>\r\n";
-
     htmlMessage += "<input type=\"button\" value =\"Pause\" onclick=\"stopUpdate();\" />";                                                                // Pause
     htmlMessage += "<input type=\"button\" value =\"Restart\" onclick=\"restartUpdate();\" />";                                                           // Restart
     htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";                                          // Refresh
-    //htmlMessage += "<form action=\"/send\" id=\"form_lines\" style=\"display:inline\">Number of lines (0-100) :";                                         // Lines number
-    //htmlMessage += "<input type=\"number\" name=\"live_data_lines\" min=\"0\" max=\"100\" step=\"10\" value=\"" + String(LIVE_DATA_LINES) + "\">";
-    //htmlMessage += "<input type=\"submit\" value=\"OK\"></form>\r\n";                                                                                     // OK
     htmlMessage += "<input type=\"text\" id=\"mySearch\" onkeyup=\"filterLines()\" placeholder=\"Search for...\" title=\"Type in a name\"><br />\r\n";    // Search
     
     htmlMessage += "<table id=\"liveData\" class='multirow';>\r\n";                                                                                       // Table of x lines
     htmlMessage += "<tr class=\"header\"><th style='text-align:left;'>Raw Data</th><th style='text-align:left;'> MQTT Topic </th><th style='text-align:left;'> MQTT JSON </th></tr>\r\n";
-    for (int i = 0; i < (5); i++){ // fix number instead of LIVE_DATA_LINES to avoid overflow
+    for (int i = 0; i < (5); i++){ // not too high to avoid overflow
       htmlMessage += "<tr id=\"data" + String(i) + "\"><td></td><td></td><td></td></tr>\r\n";
     } 
     htmlMessage += "</table>\r\n";
@@ -301,7 +315,7 @@ void ConfigHTTPserver() {
     htmlMessage += "var memorized_data;\r\n";
     htmlMessage += "function updateData(){\r\n";
     htmlMessage += "if (memorized_data != this.responseText) {\r\n";
-    for (int i = (5 - 1); i > 0; i--){	// fix number instead of LIVE_DATA_LINES to avoid overflow
+    for (int i = (5 - 1); i > 0; i--){	// not too high to avoid overflow
       htmlMessage += "document.getElementById(\"data" + String(i) + "\").innerHTML = document.getElementById(\"data" + String (i-1) + "\").innerHTML;\r\n";
     }
     htmlMessage += "}\r\n";
@@ -317,7 +331,6 @@ void ConfigHTTPserver() {
     htmlMessage += "}\r\n";
     htmlMessage += "</script>\r\n";
     htmlMessage += "<div class='note'>* see Live \"Data tab\" for more lines - web view may not catch all frames, MQTT debug is more accurate</div>\r\n";
-    //htmlMessage += "<br />\r\n";
     
     // Commands to RFLink
     htmlMessage += "<h3>Commands to RFLink</h3><br />";
@@ -329,14 +342,10 @@ void ConfigHTTPserver() {
 		"http.setRequestHeader(\"Content-type\",\"application/x-www-form-urlencoded\");"
 		"var params = \"command=\" + document.getElementById('command').value;"
 		"http.send(params);"
-		//"http.onload = function() {"
-		//"	alert(http.responseText);"
-		//"}"
 		"}</script>";
     for (int i = 0; i < (sizeof(USER_CMDs) / sizeof(USER_CMDs[0])); i++){      // User commands defined in USER_CMDs for quick access
       htmlMessage += "<a class='button link' style=\"float: left;\" href=\"javascript:{}\""; 
       htmlMessage += "onclick=\"document.getElementById('command').value = '" + String(USER_CMDs[i].command) + "';";
-      //htmlMessage += "document.getElementById('form_command').submit(); return false;\">" + String(USER_CMDs[i].text) + "</a>\r\n";
       htmlMessage += "submitForm(); return false;\">" + String(USER_CMDs[i].text) + "</a>\r\n";  
 	}
     htmlMessage += "<br style=\"clear: both;\"/>\r\n";
@@ -344,7 +353,7 @@ void ConfigHTTPserver() {
     // System Info
     htmlMessage += "<h3>System Info</h3>\r\n";
     htmlMessage += "<table class='normal'>\r\n";
-    htmlMessage += "<tr><td style='min-width:150px;'>Version</td><td style='width:80%;'>20180922_12</td></tr>\r\n";
+    htmlMessage += "<tr><td style='min-width:150px;'>Version</td><td style='width:80%;'>20181012_18</td></tr>\r\n";
     htmlMessage += "<tr><td>Uptime</td><td>" + String(uptime_string_exp()) + "</td></tr>\r\n";
     htmlMessage += "<tr><td>WiFi network</td><td>" + String(WiFi.SSID()) + " (" + WiFi.BSSIDstr() + ")</td></tr>\r\n";
     htmlMessage += "<tr><td>WiFi RSSI</td><td>" + String(WiFi.RSSI()) + " dB</td></tr>\r\n";
@@ -355,7 +364,6 @@ void ConfigHTTPserver() {
     (MQTT_DEBUG)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span>" : htmlMessage += "disabled";
     htmlMessage += "</td></tr>\r\n";
     htmlMessage += "<tr><td>MQTT connection state <a class='button help' href='https://pubsubclient.knolleary.net/api.html#state' target='_blank'>&#10068;</a></td><td>" + String(MQTTClient.state()) + "</td></tr>\r\n";
-    //htmlMessage += "<tr><td>MQTT topics</td><td style=\"font-family: 'Courier New', Courier, monospace;\">\r\n";
     htmlMessage += "<tr><td>MQTT topics</td><td><table class='condensed'>\r\n";
     htmlMessage += "<tr><td>publish (json)</td><td> " + String(MQTT_PUBLISH_TOPIC) + "/Protocol_Name-ID</td></tr>\r\n";
     htmlMessage += "<tr><td>commands to rflink</td><td> " + String(MQTT_RFLINK_ORDER_TOPIC) + "</td></tr>\r\n";
@@ -363,7 +371,7 @@ void ConfigHTTPserver() {
     htmlMessage += "<tr><td>uptime (min, every " + String( int( float(uptimeInterval) *0.001 / 60) ) + ")</td><td> " + String(MQTT_UPTIME_TOPIC) + "</td></tr>\r\n";
     htmlMessage += "<tr><td>debug (data from rflink)</td><td> " + String(MQTT_DEBUG_TOPIC) + "</td></tr>\r\n";
     htmlMessage += "</table></td></tr>\r\n";
-    htmlMessage += "<tr><td>User specific</td><td>ID for protocol Auriol V3 is forced to 0001</td></tr>\r\n";
+    //htmlMessage += "<tr><td>User specific</td><td>ID for protocol Auriol V3 is forced to 0001</td></tr>\r\n";
     htmlMessage += "</table><br />\r\n";
 
     // User ID
@@ -376,12 +384,14 @@ void ConfigHTTPserver() {
         htmlMessage += "<td style=\"text-align: left;\">" + String(matrix[i].description) + "</td>";
         htmlMessage += "<td style=\"text-align: center;\">" + String( int(float(matrix[i].publish_interval) *0.001 /60)) + " min</td>";
         if (matrix[i].last_received != 0) {
-          htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_received)) *0.001 /60 ) ) + " min ago</td>";
+          //htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_received)) *0.001 /60 ) ) + " min ago</td>";
+		  htmlMessage += "<td style=\"text-align: center;\">" + time_string_exp(now - matrix[i].last_received) + "</td>";
         } else {
           htmlMessage += "<td style=\"text-align: center;\"></td>";
         }
         if (matrix[i].last_published != 0) {
-          htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_published)) *0.001 /60 ) ) + " min ago</td>";
+          //htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_published)) *0.001 /60 ) ) + " min ago</td>";
+          htmlMessage += "<td style=\"text-align: center;\">" + time_string_exp(now - matrix[i].last_published) + "</td>";
         } else {
           htmlMessage += "<td style=\"text-align: center;\"></td>";
         }
@@ -389,13 +399,13 @@ void ConfigHTTPserver() {
       }
       htmlMessage += "</table>\r\n";
       htmlMessage += "<div class='note'>* only those IDs are published on MQTT server, and only if data changed or interval time is exceeded</div>\r\n";
-      //htmlMessage += "<a id=\"end\"></a>";
     } else {
       htmlMessage += "<div class='note'>All IDs are forwarded to MQTT server</div>\r\n";
     }
-    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
+    //htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
+    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + uptime_string_exp() + " </span>\r\n";
     htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";
-    htmlMessage += "<footer><br><h6>Powered by <a href='http://www.letscontrolit.com' style='font-size: 15px; text-decoration: none'>www.letscontrolit.com</a></h6></footer>\r\n";
+    htmlMessage += "<footer><br><h6>Powered by <a href='https://github.com/seb821' style='font-size: 15px; text-decoration: none'>github.com/seb821</a></h6></footer>\r\n";
     htmlMessage += "</body>\r\n</html>\r\n";
     httpserver.send(200, "text/html", htmlMessage);
   }); // server.on("/"...
@@ -439,22 +449,14 @@ void ConfigHTTPserver() {
     // Live data
     htmlMessage += "<h3>RFLink Live Data</h3>\r\n";
 
-    //htmlMessage += "<iframe name=\"livedataframe\" id=\"livedataframe\" frameborder=\"0\" border=\"0\" cellspacing=\"0\" src=\"live-data\" style=\"height:25em;width:100%;border:none;\"></iframe>\r\n";
-
     htmlMessage += "<input type=\"button\" value =\"Pause\" onclick=\"stopUpdate();\" />";                                                                // Pause
     htmlMessage += "<input type=\"button\" value =\"Restart\" onclick=\"restartUpdate();\" />";                                                           // Restart
-    htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";                                          // Refresh
-    //htmlMessage += "<form action=\"/send\" id=\"form_lines\" style=\"display:inline\">Number of lines (0-100) :";                                         // Lines number
-    //htmlMessage += "<input type=\"number\" name=\"live_data_lines\" min=\"0\" max=\"100\" step=\"10\" value=\"" + String(LIVE_DATA_LINES) + "\">";
-    //htmlMessage += "<input type=\"submit\" value=\"OK\"></form>\r\n";                                                                                     // OK
+    htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";                                          // Refresh                                                                                   // OK
     htmlMessage += "<input type=\"text\" id=\"mySearch\" onkeyup=\"filterLines()\" placeholder=\"Search for...\" title=\"Type in a name\"><br />\r\n";    // Search
     
     htmlMessage += "<table id=\"liveData\" class='multirow';>\r\n";                                                                                       // Table of x lines
-    htmlMessage += "<tr class=\"header\"><th style='text-align:left;'>Raw Data</th><th style='text-align:left;'> MQTT Topic </th><th style='text-align:left;'> MQTT JSON </th></tr>\r\n";
-    //for (int i = 0; i < (LIVE_DATA_LINES); i++){
-    //for (int i = 0; i < 1; i++){
-	htmlMessage += "<tr id=\"data0" "\"><td></td><td></td><td></td></tr>\r\n";
-    //} 
+    htmlMessage += "<tr class=\"header\"><th style='text-align:left;'>Time</th><th style='text-align:left;'>Raw Data</th><th style='text-align:left;'> MQTT Topic </th><th style='text-align:left;'> MQTT JSON </th></tr>\r\n";
+	htmlMessage += "<tr id=\"data0" "\"><td></td><td></td><td></td><td></td></tr>\r\n";
     htmlMessage += "</table>\r\n";
     
     htmlMessage += "<script>\r\n";                                                       // Script to filter lines
@@ -465,7 +467,7 @@ void ConfigHTTPserver() {
     htmlMessage += "  table = document.getElementById(\"liveData\");\r\n";
     htmlMessage += "  tr = table.getElementsByTagName(\"tr\");\r\n";
     htmlMessage += "  for (i = 0; i < tr.length; i++) {\r\n";
-    htmlMessage += "    td = tr[i].getElementsByTagName(\"td\")[0];\r\n";
+    htmlMessage += "    td = tr[i].getElementsByTagName(\"td\")[1];\r\n";
     htmlMessage += "    if (td) {\r\n";
     htmlMessage += "      if (td.innerHTML.toUpperCase().indexOf(filter) > -1) {\r\n";
     htmlMessage += "        tr[i].style.display = \"\";\r\n";
@@ -501,13 +503,12 @@ void ConfigHTTPserver() {
     htmlMessage += "function updateData(){\r\n";
     htmlMessage += "if (memorized_data != this.responseText) {\r\n";
 	htmlMessage += "roll();";
-    //for (int i = (LIVE_DATA_LINES - 1); i > 0; i--){
-    //  htmlMessage += "document.getElementById(\"data" + String(i) + "\").innerHTML = document.getElementById(\"data" + String (i-1) + "\").innerHTML;\r\n";
-    //}
-    htmlMessage += "}\r\n";
-    htmlMessage += "document.getElementById(\"data0\").innerHTML = this.responseText;\r\n";
+    htmlMessage += "var date = new Date;\r\n";
+    htmlMessage += "h = date.getHours(); if(h<10) {h = '0'+h;}; m = date.getMinutes(); if(m<10) {m = '0'+m;}; s = date.getSeconds(); if(s<10) {s = '0'+s;}\r\n";
+    htmlMessage += "document.getElementById('data0').innerHTML = '<td>' + h + ':' + m + ':' + s + '</td>' + this.responseText;\r\n";
     htmlMessage += "memorized_data = this.responseText;\r\n"; // memorize new data
     htmlMessage += "filterLines();\r\n";                      // apply filter from mySearch input
+    htmlMessage += "}\r\n";
     htmlMessage += "}\r\n";
     htmlMessage += "function stopUpdate(){\r\n";
     htmlMessage += " clearInterval(x);\r\n";
@@ -516,17 +517,17 @@ void ConfigHTTPserver() {
     htmlMessage += " x = setInterval(function() {loadData(\"data.txt\",updateData)}, 250);\r\n";       // update every 250 ms
     htmlMessage += "}\r\n";
     htmlMessage += "</script>\r\n";
-    
-    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
+    //htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
+    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + uptime_string_exp() + " </span>\r\n";
     htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";
-    htmlMessage += "<footer><br><h6>Powered by <a href='http://www.letscontrolit.com' style='font-size: 15px; text-decoration: none'>www.letscontrolit.com</a></h6></footer>\r\n";
+    htmlMessage += "<footer><br><h6>Powered by <a href='https://github.com/seb821' style='font-size: 15px; text-decoration: none'>github.com/seb821</a></h6></footer>\r\n";
     htmlMessage += "</body>\r\n</html>\r\n";
     httpserver.send(200, "text/html", htmlMessage);
 	
   }); // livedata
   
   httpserver.on("/reboot",[](){                                	// Reboot ESP
-    debugSerialTX.println("Rebooting device...");
+    DEBUG_PRINTLN("Rebooting device...");
     //httpserver.sendHeader("Location","/");                    // Add a header to respond with a new location for the browser to go to the home page again
     //httpserver.send(303);                                     // Send it back to the browser with an HTTP status 303 (See Other) to redirect
     httpserver.send(200, "text/html", "Rebooting...");
@@ -536,14 +537,12 @@ void ConfigHTTPserver() {
   });
 
   httpserver.on("/reset-mega",[](){                             // Reset MEGA
-    debugSerialTX.println("Resetting Mega...");
+    DEBUG_PRINTLN("Resetting Mega...");
     pinMode(MEGA_RESET_PIN, OUTPUT);
     digitalWrite(MEGA_RESET_PIN,false);                         // Change the state of pin to ground
     delay(1000); 
     digitalWrite(MEGA_RESET_PIN,true);                          // Change the state of pin VCC
 	delay(50);
-    //httpserver.sendHeader("Location","/");                    // Add a header to respond with a new location for the browser to go to the home page again
-    //httpserver.send(303);                                     // Send it back to the browser with an HTTP status 303 (See Other) to redirect
     httpserver.send(200, "text/html", "Resetting Mega...");
 
 	});
@@ -560,41 +559,42 @@ void ConfigHTTPserver() {
              rflinkSerialTX.write(buf, sizeof(buf));            // Write command to RFLink serial
              //rflinkSerialTX.print(httpserver.arg(i));
              rflinkSerialTX.print(F("\r\n"));
-             //debugSerialTX.println();
-             //debugSerialTX.println(F("=== Web command ==="));
-             //debugSerialTX.print(F("message = "));
-             //debugSerialTX.write(buf, sizeof(buf));
-             //debugSerialTX.print(httpserver.arg(i));
-             //debugSerialTX.println(F("\r\n"));
+             DEBUG_PRINTLN();
+             DEBUG_PRINTLN(F("=== Web command ==="));
+             DEBUG_PRINT(F("message = "));
+             DEBUG_WRITE(buf, sizeof(buf));
+             DEBUG_PRINT(httpserver.arg(i));
+             DEBUG_PRINTLN(F("\r\n"));
           }
           
        }
     }
-    httpserver.sendHeader("Location","/");                      // Add a header to respond with a new location for the browser to go to the home page again
-    httpserver.send(303);                                       // Send it back to the browser with an HTTP status 303 (See Other) to redirect
+    httpserver.sendHeader("Location","/");       	// Add a header to respond with a new location for the browser to go to the home page again
+    httpserver.send(303);                       	// Send it back to the browser with an HTTP status 303 (See Other) to redirect
     
   });
   
   httpserver.on("/enable-debug",[](){
-    debugSerialTX.println("Enabling MQTT debug...");
+    DEBUG_PRINTLN("Enabling MQTT debug...");
     MQTT_DEBUG = 1;
-    httpserver.sendHeader("Location","/");                      // Add a header to respond with a new location for the browser to go to the home page again
-    httpserver.send(303);                                       // Send it back to the browser with an HTTP status 303 (See Other) to redirect
+    httpserver.sendHeader("Location","/");      	// Add a header to respond with a new location for the browser to go to the home page again
+    httpserver.send(303);                     		// Send it back to the browser with an HTTP status 303 (See Other) to redirect
   });
 
   httpserver.on("/disable-debug",[](){
-    debugSerialTX.println("Disabling MQTT debug...");
+    DEBUG_PRINTLN("Disabling MQTT debug...");
     MQTT_DEBUG = 0;
-    httpserver.sendHeader("Location","/");                      // Add a header to respond with a new location for the browser to go to the home page again
-    httpserver.send(303);                                       // Send it back to the browser with an HTTP status 303 (See Other) to redirect
+	MQTTClient.publish(MQTT_DEBUG_TOPIC,"{\"DATA\":\" \",\"ID\":\" \",\"NAME\":\" \",\"TOPIC\":\" \",\"JSON\":\" \"}");
+    httpserver.sendHeader("Location","/");     		// Add a header to respond with a new location for the browser to go to the home page again
+    httpserver.send(303);                       	// Send it back to the browser with an HTTP status 303 (See Other) to redirect
   });
   
-  httpserver.on("/data.txt", [](){                              // Used to deliver raw data received (BUFFER) and mqtt data published (MQTT_TOPIC and JSON)           
+  httpserver.on("/data.txt", [](){            		// Used to deliver raw data received (BUFFER) and mqtt data published (MQTT_TOPIC and JSON)           
     httpserver.send(200, "text/html", "<td>" + String(BUFFER) + "</td><td>" + String(MQTT_TOPIC) + "</td><td>" + String(JSON) + "</td>\r\n");
   });
 
   httpserver.onNotFound([](){
-    httpserver.send(404, "text/plain", "404: Not found");             // Send HTTP status 404 (Not Found) when there's no handler for the URI in the request
+    httpserver.send(404, "text/plain", "404: Not found");      	// Send HTTP status 404 (Not Found) when there's no handler for the URI in the request
   });
 
 };
@@ -603,7 +603,7 @@ void ConfigHTTPserver() {
  * MQTT publish without json
  */
  
-void pubFlatMqtt(char* topic,char* json)                            // Unused but could be usefull
+void pubFlatMqtt(char* topic,char* json)          	// Unused but could be usefull
 {
         DynamicJsonBuffer jsonBuffer(BUFFER_SIZE);
         JsonObject& root = jsonBuffer.parseObject(json);
@@ -611,14 +611,14 @@ void pubFlatMqtt(char* topic,char* json)                            // Unused bu
 
         // Test if parsing succeeds.
         if (!root.success()) {
-                debugSerialTX.println("parseObject() failed");
+                DEBUG_PRINTLN("parseObject() failed");
                 return;
         }
 
         for (auto kv : root) {
-                debugSerialTX.print(kv.key);
-                debugSerialTX.print(F(" => "));
-                debugSerialTX.println(kv.value.as<char*>());
+                DEBUG_PRINT(kv.key);
+                DEBUG_PRINT(F(" => "));
+                DEBUG_PRINTLN(kv.value.as<char*>());
                 strcpy(myTopic,topic);
                 strcat(myTopic,"/");
                 strcat(myTopic,kv.key);
@@ -637,10 +637,10 @@ long uptime_min()
  long hours=0;
  long mins=0;
  long secs=0;
- secs = millis()/1000; //convect milliseconds to seconds
- mins=secs/60; //convert seconds to minutes
- hours=mins/60; //convert minutes to hours
- days=hours/24; //convert hours to days
+ secs = millis()/1000; 		//convect milliseconds to seconds
+ mins=secs/60; 				//convert seconds to minutes
+ hours=mins/60; 			//convert minutes to hours
+ days=hours/24; 			//convert hours to days
  return mins;
 }
 
@@ -654,6 +654,26 @@ String uptime_string_exp()
   int hrs = minutes / 60;
   minutes = minutes % 60;
   sprintf_P(strUpTime, PSTR("%d days %d hours %d minutes"), days, hrs, minutes);
+  result = strUpTime;
+  return result;
+} 
+
+String time_string_exp(long time)
+{
+  String result;
+  char strUpTime[40];
+  int minutes = int(float(time) *0.001 / 60);
+  int days = minutes / 1440;
+  minutes = minutes % 1440;
+  //int hrs = minutes / 60;
+  int hrs = ( minutes / 60 ) + ( days * 24 );
+  minutes = minutes % 60;
+  //sprintf_P(strUpTime, PSTR("%d d %d h %d min"), days, hrs, minutes);
+  if (hrs > 0) {
+	  sprintf_P(strUpTime, PSTR("%d h %d min"), hrs, minutes);
+  } else {
+	  sprintf_P(strUpTime, PSTR("%d min"), minutes);
+  }
   result = strUpTime;
   return result;
 } 
@@ -684,6 +704,7 @@ boolean isNumeric(String str) {
     return true;
 }
 
+
 /*********************************************************************************
  * Classic arduino bootstrap
 /*********************************************************************************/
@@ -693,18 +714,18 @@ void setup() {
 
         // Open serial communications and wait for port to open:
         
-        //debugSerialTX.begin(115200);
-        debugSerialTX.begin(57600);        // XXX Serial : same speed as RFLInk
-        debugSerialTX.println();
-        debugSerialTX.println(F("Starting..."));
-        while (!debugSerialTX) {
-                ; // wait for serial port to connect. Needed for native USB port only
-        }
-        debugSerialTX.println(F("Init serial done"));
+        //DEBUG_BEGIN(115200);
+        debugSerialTX.begin(57600);        // XXX debug serial : same speed as RFLInk
+        DEBUG_PRINTLN();
+        DEBUG_PRINTLN(F("Starting..."));
+			while (!debugSerialTX) {
+					; // wait for serial port to connect. Needed for native USB port only
+			}
+        DEBUG_PRINTLN(F("Init debug serial done"));
 
-        // set the data rate for the SoftwareSerial port
+        // Set the data rate for the RFLink serial
         rflinkSerialTX.begin(57600);
-        debugSerialTX.println(F("Init software serial done"));
+        DEBUG_PRINTLN(F("Init rflink serial done"));
 
         // Setup WIFI
         setup_wifi();
@@ -715,23 +736,24 @@ void setup() {
         // Setup OTA
         SetupOTA();
         ArduinoOTA.begin();
-        debugSerialTX.print("Ready for OTA on ");
-        debugSerialTX.print("IP address:\t");
-        debugSerialTX.println(WiFi.localIP());
+        DEBUG_PRINT("Ready for OTA on ");
+        DEBUG_PRINT("IP address:\t");
+        DEBUG_PRINTLN(WiFi.localIP());
 
         // Setup HTTP Server
         ConfigHTTPserver();
         httpUpdater.setup(&httpserver);                                 // Firmware webupdate
-        //debugSerialTX.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", MQTT_RFLINK_CLIENT_NAME);
-        debugSerialTX.println("HTTPUpdateServer ready");
+        //DEBUG_PRINTF("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", MQTT_RFLINK_CLIENT_NAME);
+        DEBUG_PRINTLN("HTTPUpdateServer ready");
         httpserver.begin();                                             // Actually start the HTTP server
-        debugSerialTX.println("HTTP server started"); 
+        DEBUG_PRINTLN("HTTP server started"); 
         
         rflinkSerialTX.println();
-        //rflinkSerialTX.println(F("10;status;"));                          // Ask status to RFLink
-        rflinkSerialTX.println(F("10;ping;"));                              // Do a PING on startup
+        //rflinkSerialTX.println(F("10;status;"));            			// Ask status to RFLink
+        rflinkSerialTX.println(F("10;ping;"));                       	// Do a PING on startup
+		rflinkSerialTX.println(F("10;version;"));                   	// Ask version to RFLink
 
-        // get values from USER_IDs into matrix
+        // Get values from USER_IDs into matrix
         for (int i =0; i < USER_ID_NUMBER; i++) {
             strcpy(matrix[i].id,USER_IDs[i].id);
             matrix[i].publish_interval = USER_IDs[i].publish_interval;
@@ -748,7 +770,7 @@ void loop() {
         bool DataReady=false;
         // handle lost of connection : retry after 5s on each loop
         if (!MQTTClient.connected()) {
-                debugSerialTX.println(F("Not connected, retrying in 5s"));
+                DEBUG_PRINTLN(F("Not connected, retrying in 5s"));
                 delay(5000);
                 MqttConnect();
         } else {
@@ -777,7 +799,7 @@ void loop() {
                 if (DataReady) {
 
 						// clean variables
-                        strcpy(MQTT_ID,""); strcpy(MQTT_NAME,"");strcpy(MQTT_TOPIC,"");strcpy(JSON,"");
+                        strcpy(MQTT_ID,""); strcpy(MQTT_NAME,"");strcpy(MQTT_TOPIC,"");strcpy(JSON,"");strcpy(JSON_DEBUG,"");
 						
                         readRfLinkPacket(BUFFER);
 						
@@ -792,12 +814,14 @@ void loop() {
                         //if (MQTT_DEBUG) MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER);      // XXX MQTT debug mode, raw data only
 						if (MQTT_DEBUG) {													// XXX MQTT debug mode with json, full data
 							strcpy(BUFFER_DEBUG,"{");
-							BUFFER[lastchar-1] = ' ';BUFFER[lastchar] = ' ';										// Removes line return \n in BUFFER
+							BUFFER[lastchar-1] = ' ';BUFFER[lastchar] = ' ';				// Remove line return \n in BUFFER
 							strcat(BUFFER_DEBUG,"\"DATA\":\"");strcat(BUFFER_DEBUG,BUFFER);
 							strcat(BUFFER_DEBUG,"\",\"ID\":\"");strcat(BUFFER_DEBUG,MQTT_ID);
 							strcat(BUFFER_DEBUG,"\",\"NAME\":\"");strcat(BUFFER_DEBUG,MQTT_NAME);
 							strcat(BUFFER_DEBUG,"\",\"TOPIC\":\"");strcat(BUFFER_DEBUG,MQTT_TOPIC);
-							// XXX todo: replace " or remove brackets {}- strcat(BUFFER_DEBUG,"\",\"JSON\":\"");strcat(BUFFER_DEBUG,JSON);
+							strcpy(JSON_DEBUG,JSON);
+							for (char* p = JSON_DEBUG; p = strchr(p, '\"'); ++p) {*p = '\'';}	// Remove quotes
+							strcat(BUFFER_DEBUG,"\",\"JSON\":\"");strcat(BUFFER_DEBUG,JSON_DEBUG);
 							strcat(BUFFER_DEBUG,"\"}");
 							MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG);
 						}
@@ -809,29 +833,29 @@ void loop() {
                           int i;
                           for (i = 0; i < (USER_ID_NUMBER); i++){
                             
-                            //debugSerialTX.print("ID = ");debugSerialTX.print(matrix[i].id);
-                            //debugSerialTX.print(" ; publish_interval = ");debugSerialTX.print(matrix[i].publish_interval);
-                            //debugSerialTX.print(" ; decription = ");debugSerialTX.print(matrix[i].description);
-                            //debugSerialTX.print(" ; json = ");debugSerialTX.print(matrix[i].json);
-                            //debugSerialTX.print(" ; last_published = ");debugSerialTX.print(matrix[i].last_published);
-                            //debugSerialTX.print(" ; last_received = ");debugSerialTX.println(matrix[i].last_received);
+                            DEBUG_PRINT("ID = ");DEBUG_PRINT(matrix[i].id);
+                            DEBUG_PRINT(" ; publish_interval = ");DEBUG_PRINT(matrix[i].publish_interval);
+                            DEBUG_PRINT(" ; decription = ");DEBUG_PRINT(matrix[i].description);
+                            DEBUG_PRINT(" ; json = ");DEBUG_PRINT(matrix[i].json);
+                            DEBUG_PRINT(" ; last_published = ");DEBUG_PRINT(matrix[i].last_published);
+                            DEBUG_PRINT(" ; last_received = ");DEBUG_PRINTLN(matrix[i].last_received);
                             
                             if (strcmp(MQTT_ID,matrix[i].id) == 0) {                                      	// check ID is authorized
-                              //debugSerialTX.print("Authorized ID ");debugSerialTX.print(MQTT_ID);
+                              DEBUG_PRINT("Authorized ID ");DEBUG_PRINT(MQTT_ID);
                               matrix[i].last_received = millis();                                         	// memorize received time
                               if (strcmp(matrix[i].json,JSON) != 0) {                                     	// check if json value has changed
-                                //debugSerialTX.print(" => data changed => published on ");debugSerialTX.println(MQTT_TOPIC);
+                                DEBUG_PRINT(" => data changed => published on ");DEBUG_PRINTLN(MQTT_TOPIC);
                                 MQTTClient.publish(MQTT_TOPIC,JSON);                           			  	// if changed, publish on MQTT server  
                                 strcpy(matrix[i].json,JSON);                                              	// memorize new json value
                                 matrix[i].last_published = millis();                                      	// memorize published time                                
                               } else {                                                                    	// no value change
                                 now = millis();
                                 if ( (now - matrix[i].last_published) > (matrix[i].publish_interval) ) {   	// check if it exceeded time for last publish
-                                  //debugSerialTX.print(" => no data change but max time interval exceeded => published on ");debugSerialTX.println(MQTT_TOPIC);
+                                  DEBUG_PRINT(" => no data change but max time interval exceeded => published on ");DEBUG_PRINTLN(MQTT_TOPIC);
                                   MQTTClient.publish(MQTT_TOPIC,JSON);                             			// publish on MQTT server
                                   matrix[i].last_published = millis();                               		// memorize published time
                                 } else {
-                                  //debugSerialTX.println(" => no data change => not published");
+                                  DEBUG_PRINTLN(" => no data change => not published");
                                 }
                               }   // no data changed
                             }     // authorized id
@@ -841,7 +865,7 @@ void loop() {
                         } else {                                                	// case all IDs are authorized
                           MQTTClient.publish(MQTT_TOPIC,JSON);                   	// publish on MQTT server
                         }
-                        //debugSerialTX.println();
+                        DEBUG_PRINTLN();
                         //pubFlatMqtt(MQTT_TOPIC,JSON);								// expands JSON and publish on several topics
                 } // end of DataReady
 
@@ -853,7 +877,7 @@ void loop() {
                   String mqtt_publish_string = String(uptime_min());
                   mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
                   MQTTClient.publish(MQTT_UPTIME_TOPIC,mqtt_publish_payload);
-                  //debugSerialTX.print("Uptime : ");debugSerialTX.println(uptime_string_exp());
+                  DEBUG_PRINT("Uptime : ");DEBUG_PRINTLN(uptime_string_exp());
                   }
 
                 // Handle MQTT callback

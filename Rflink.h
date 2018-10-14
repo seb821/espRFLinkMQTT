@@ -7,8 +7,6 @@
 /*********************************************************************************
  * RFLink settings
 /*********************************************************************************/
-// Rflink mqtt topic name
-#define RFLINK_MQTT_TOPIC "rflink"
 
 // if less than that, rflink line will be ignored
 #define RFLINK_PACKET_MIN_SIZE 8
@@ -81,7 +79,7 @@ const char PROGMEM RFLINK_MQTT_NAME_PONG[]       = "PONG";
 const char PROGMEM RFLINK_MQTT_NAME_BLE_DEBUG[]  = "BLE_DEBUG";
 const char PROGMEM RFLINK_MQTT_NAME_STATUS[]     = "STATUS";
 const char PROGMEM RFLINK_MQTT_NAME_NODO[]       = "Nodo_RadioFrequencyLink";
-const char PROGMEM RFLINK_MQTT_NAME_PULLUP[]     = "Internal Pullup on RF-in disabled";
+const char PROGMEM RFLINK_MQTT_NAME_PULLUP[]     = "Internal_Pullup_on_RF-in_disabled";
 const char* const PROGMEM RFLINK_MQTT_NAMES_NO_JSON[] = {
         RFLINK_MQTT_NAME_DEBUG,
         RFLINK_MQTT_NAME_Debug,
