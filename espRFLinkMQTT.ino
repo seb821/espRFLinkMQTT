@@ -14,7 +14,7 @@ struct USER_CMD_STRUCT {        // Preconfigured commands to show on web interfa
 };
 
 /*********************************************************************************
- * Parameters for IDs filtering and serial comm, see other parameters in Common.h
+ * Parameters for IDs filtering and serial comm ; see also parameters in Common.h
 /*********************************************************************************/
 
 #define USER_ID_NUMBER 0             // *MUST* be equal to USER_IDs number of lines OR set to 0 to publish all IDs with no condition
@@ -39,6 +39,8 @@ const USER_CMD_STRUCT USER_CMDs[] = {    // Configure commands to show on web in
   auto& rflinkSerialRX = Serial;                        // rflinkSerialRX is for data from RFLink - use softSerial to listen on software serial, use Serial to listen on hardware serial (ESP RX pin)
   auto& rflinkSerialTX = softSerial;                    // rflinkSerialTX is for data to RFLink - use softSerial (GPIO2/D4) to write on software serial, use Serial to write on hardware serial (ESP TX pin)
 
+long resetMegaInterval = 0 * 1000 * 60;					// reset Mega if no data is received during more than x min - 0 to disable
+
 /*********************************************************************************
  * Global Variables
 /*********************************************************************************/
@@ -60,9 +62,10 @@ const USER_CMD_STRUCT USER_CMDs[] = {    // Configure commands to show on web in
   
 bool MQTT_DEBUG = 0;		// debug variable to publish received data on MQTT debug topic ; default is disabled, can be enabled from web interface
 
-long lastUptime = - 5 * 1000 * 60;     // timer to publish uptime on MQTT server ; sufficient negative value forces update at startup
-long uptimeInterval = 5 * 1000 * 60;   // publish uptime every 5 min
+long lastUptime = - 5 * 1000 * 60;			// timer to publish uptime on MQTT server ; sufficient negative value forces update at startup
+long uptimeInterval = 5 * 1000 * 60;		// publish uptime every 5 min
 long now;
+long lastReceived = millis();     			// store last received (millis)
 
 struct USER_ID_STRUCT_ALL {
   char id[8];              	// ID
@@ -77,7 +80,7 @@ USER_ID_STRUCT_ALL matrix[USER_ID_NUMBER];
 
 // main input / output buffers
 char BUFFER [BUFFER_SIZE];
-char BUFFER_DEBUG [5 + BUFFER_SIZE + 5 + MAX_DATA_LEN + 5 + MAX_DATA_LEN + 5 + MAX_TOPIC_LEN + 5 + BUFFER_SIZE + 5];
+char BUFFER_DEBUG [5 + BUFFER_SIZE + 5 + MAX_DATA_LEN + 5 + MAX_DATA_LEN + 5 + MAX_TOPIC_LEN + 5 + BUFFER_SIZE + 5]; // It may be necessary to increase MQTT_MAX_PACKET_SIZE in PubSubClient.h
 char JSON   [BUFFER_SIZE];
 char JSON_DEBUG   [BUFFER_SIZE];
 
@@ -139,7 +142,7 @@ void buildMqttTopic(char *name, char *ID) {
         strcat(MQTT_TOPIC,MQTT_NAME);
         strcat(MQTT_TOPIC,"-");
         strcat(MQTT_TOPIC,MQTT_ID);;
-        strcat(MQTT_TOPIC,"\0");
+        //strcat(MQTT_TOPIC,"\0");
 }
 
 /**
@@ -353,12 +356,17 @@ void ConfigHTTPserver() {
     // System Info
     htmlMessage += "<h3>System Info</h3>\r\n";
     htmlMessage += "<table class='normal'>\r\n";
-    htmlMessage += "<tr><td style='min-width:150px;'>Version</td><td style='width:80%;'>20181012_18</td></tr>\r\n";
+    htmlMessage += "<tr><td style='min-width:150px;'>Version</td><td style='width:80%;'>20190120</td></tr>\r\n";
     htmlMessage += "<tr><td>Uptime</td><td>" + String(uptime_string_exp()) + "</td></tr>\r\n";
     htmlMessage += "<tr><td>WiFi network</td><td>" + String(WiFi.SSID()) + " (" + WiFi.BSSIDstr() + ")</td></tr>\r\n";
     htmlMessage += "<tr><td>WiFi RSSI</td><td>" + String(WiFi.RSSI()) + " dB</td></tr>\r\n";
     htmlMessage += "<tr><td>IP address (MAC)</td><td>" + WiFi.localIP().toString() +" (" + String(WiFi.macAddress()) +")</td></tr>\r\n";
-    htmlMessage += "<tr><td>ESP pin to reset MEGA</td><td>GPIO " + String(MEGA_RESET_PIN) + "</td></tr>";
+    //htmlMessage += "<tr><td>ESP pin to reset MEGA</td><td>GPIO " + String(MEGA_RESET_PIN) + "</td></tr>";
+	htmlMessage += "<tr><td>ESP pin to reset MEGA</td><td>GPIO " + String(MEGA_RESET_PIN);
+	if (resetMegaInterval > 0) {
+		htmlMessage += " - auto reset after " + String( int(float(resetMegaInterval) *0.001 /60)) + " min if no data received - last data " + time_string_exp(now - lastReceived) + " ago";
+	}
+	htmlMessage += "</td></tr>";
     htmlMessage += "<tr><td>MQTT server and port</td><td>" + String(MQTT_SERVER) + ":" + String(MQTT_PORT)+"</td></tr>\r\n";
     htmlMessage += "<tr><td>MQTT debug topic</td><td>";
     (MQTT_DEBUG)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span>" : htmlMessage += "disabled";
@@ -400,7 +408,7 @@ void ConfigHTTPserver() {
       htmlMessage += "</table>\r\n";
       htmlMessage += "<div class='note'>* only those IDs are published on MQTT server, and only if data changed or interval time is exceeded</div>\r\n";
     } else {
-      htmlMessage += "<div class='note'>All IDs are forwarded to MQTT server</div>\r\n";
+      htmlMessage += "<div class='note'>* all IDs are forwarded to MQTT server</div>\r\n";
     }
     //htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
     htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + uptime_string_exp() + " </span>\r\n";
@@ -455,7 +463,7 @@ void ConfigHTTPserver() {
     htmlMessage += "<input type=\"text\" id=\"mySearch\" onkeyup=\"filterLines()\" placeholder=\"Search for...\" title=\"Type in a name\"><br />\r\n";    // Search
     
     htmlMessage += "<table id=\"liveData\" class='multirow';>\r\n";                                                                                       // Table of x lines
-    htmlMessage += "<tr class=\"header\"><th style='text-align:left;'>Time</th><th style='text-align:left;'>Raw Data</th><th style='text-align:left;'> MQTT Topic </th><th style='text-align:left;'> MQTT JSON </th></tr>\r\n";
+    htmlMessage += "<tr class=\"header\"><th style='text-align:left;'> <a onclick='sortTable(0)'>Time</a></th><th style='text-align:left;'> <a onclick='sortTable(1)'>Raw Data</a> </th><th style='text-align:left;'> <a onclick='sortTable(2)'>MQTT Topic</a> </th><th style='text-align:left;'> <a onclick='sortTable(3)'>MQTT JSON</a> </th></tr>\r\n";
 	htmlMessage += "<tr id=\"data0" "\"><td></td><td></td><td></td><td></td></tr>\r\n";
     htmlMessage += "</table>\r\n";
     
@@ -517,6 +525,31 @@ void ConfigHTTPserver() {
     htmlMessage += " x = setInterval(function() {loadData(\"data.txt\",updateData)}, 250);\r\n";       // update every 250 ms
     htmlMessage += "}\r\n";
     htmlMessage += "</script>\r\n";
+	htmlMessage += ""
+		"<script>\r\n"
+		"function sortTable(column) {\r\n"
+		"  var table, rows, switching, i, x, y, shouldSwitch;\r\n"
+		"  table = document.getElementById(\"liveData\");\r\n"
+		"  switching = true;\r\n"
+		"  while (switching) {\r\n"
+		"	switching = false;\r\n"
+		"	rows = table.rows;\r\n"
+		"	for (i = 1; i < (rows.length - 1); i++) {\r\n"
+		"	  shouldSwitch = false;\r\n"
+		"	  x = rows[i].getElementsByTagName(\"TD\")[column];\r\n"
+		"	  y = rows[i + 1].getElementsByTagName(\"TD\")[column];\r\n"
+		"	  if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {\r\n"
+		"		shouldSwitch = true;\r\n"
+		"		break;\r\n"
+		"	  }\r\n"
+		"	}\r\n"
+		"	if (shouldSwitch) {\r\n"
+		"	  rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);\r\n"
+		"	  switching = true;\r\n"
+		"	}\r\n"
+		"  }\r\n"
+		"}\r\n"
+		"</script>\r\n";
     //htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
     htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + uptime_string_exp() + " </span>\r\n";
     htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";
@@ -749,9 +782,11 @@ void setup() {
         DEBUG_PRINTLN("HTTP server started"); 
         
         rflinkSerialTX.println();
+		delay(100);
         //rflinkSerialTX.println(F("10;status;"));            			// Ask status to RFLink
         rflinkSerialTX.println(F("10;ping;"));                       	// Do a PING on startup
-		rflinkSerialTX.println(F("10;version;"));                   	// Ask version to RFLink
+        delay(100);
+    		rflinkSerialTX.println(F("10;version;"));                   	// Ask version to RFLink
 
         // Get values from USER_IDs into matrix
         for (int i =0; i < USER_ID_NUMBER; i++) {
@@ -768,13 +803,12 @@ void setup() {
 
 void loop() {
         bool DataReady=false;
-        // handle lost of connection : retry after 5s on each loop
+        // handle lost of connection : retry after 1s on each loop
         if (!MQTTClient.connected()) {
-                DEBUG_PRINTLN(F("Not connected, retrying in 5s"));
-                delay(5000);
+                DEBUG_PRINTLN(F("Not connected, retrying in 1s"));
+                delay(1000);
                 MqttConnect();
         } else {
-				int lastchar;
                 // if something arrives from rflink
                 if(rflinkSerialRX.available()) {
                         char rc;
@@ -786,7 +820,6 @@ void loop() {
                                   CPT++;
                                   if (BUFFER[CPT-1] == '\n') {
                                           DataReady = true;
-										  lastchar = CPT-1;
                                           BUFFER[CPT]='\0';
                                           CPT=0;
                                   }
@@ -797,11 +830,13 @@ void loop() {
 
                 // parse what we just read
                 if (DataReady) {
-
+						
 						// clean variables
                         strcpy(MQTT_ID,""); strcpy(MQTT_NAME,"");strcpy(MQTT_TOPIC,"");strcpy(JSON,"");strcpy(JSON_DEBUG,"");
 						
                         readRfLinkPacket(BUFFER);
+						
+						if ( (strcmp(MQTT_ID,"") != 0) && (strcmp(MQTT_ID,"0\0") != 0) ) lastReceived = millis();				// Store last received data time if MQTT_ID is valid
 						
                         //if (strcmp(MQTT_NAME,"Auriol_V3") == 0) strcpy( MQTT_ID , "0001");  // XXX force unique ID for device changing frequently
                         
@@ -814,15 +849,14 @@ void loop() {
                         //if (MQTT_DEBUG) MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER);      // XXX MQTT debug mode, raw data only
 						if (MQTT_DEBUG) {													// XXX MQTT debug mode with json, full data
 							strcpy(BUFFER_DEBUG,"{");
-							BUFFER[lastchar-1] = ' ';BUFFER[lastchar] = ' ';				// Remove line return \n in BUFFER
-							strcat(BUFFER_DEBUG,"\"DATA\":\"");strcat(BUFFER_DEBUG,BUFFER);
-							strcat(BUFFER_DEBUG,"\",\"ID\":\"");strcat(BUFFER_DEBUG,MQTT_ID);
-							strcat(BUFFER_DEBUG,"\",\"NAME\":\"");strcat(BUFFER_DEBUG,MQTT_NAME);
-							strcat(BUFFER_DEBUG,"\",\"TOPIC\":\"");strcat(BUFFER_DEBUG,MQTT_TOPIC);
+							strcat(BUFFER_DEBUG,"\"DATA\":\"");strncat(BUFFER_DEBUG,BUFFER,strlen(BUFFER)-2);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,",\"ID\":\"");strcat(BUFFER_DEBUG,MQTT_ID);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,",\"NAME\":\"");strcat(BUFFER_DEBUG,MQTT_NAME);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,",\"TOPIC\":\"");strcat(BUFFER_DEBUG,MQTT_TOPIC);strcat(BUFFER_DEBUG,"\"");
 							strcpy(JSON_DEBUG,JSON);
 							for (char* p = JSON_DEBUG; p = strchr(p, '\"'); ++p) {*p = '\'';}	// Remove quotes
-							strcat(BUFFER_DEBUG,"\",\"JSON\":\"");strcat(BUFFER_DEBUG,JSON_DEBUG);
-							strcat(BUFFER_DEBUG,"\"}");
+							strcat(BUFFER_DEBUG,",\"JSON\":\"");strcat(BUFFER_DEBUG,JSON_DEBUG);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,"}");
 							MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG);
 						}
                         
@@ -869,17 +903,39 @@ void loop() {
                         //pubFlatMqtt(MQTT_TOPIC,JSON);								// expands JSON and publish on several topics
                 } // end of DataReady
 
+				now = millis();
+				
                 // Handle uptime
-                now = millis();
-                if ( (now - lastUptime) > (uptimeInterval) ) {    // if time interval exceeded, publish uptime
-                  lastUptime = now;
-                  char mqtt_publish_payload[5];
-                  String mqtt_publish_string = String(uptime_min());
-                  mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
-                  MQTTClient.publish(MQTT_UPTIME_TOPIC,mqtt_publish_payload);
-                  DEBUG_PRINT("Uptime : ");DEBUG_PRINTLN(uptime_string_exp());
-                  }
 
+                if ( (now - lastUptime) > (uptimeInterval) ) {    					// if uptime interval is exceeded
+					char mqtt_publish_payload[50];
+					lastUptime = now;
+					String mqtt_publish_string = String(uptime_min());
+					mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
+					MQTTClient.publish(MQTT_UPTIME_TOPIC,mqtt_publish_payload);
+					DEBUG_PRINT("Uptime : ");DEBUG_PRINTLN(uptime_string_exp());
+                }
+				  
+				// Handle Mega reset if no data is received
+				if (resetMegaInterval > 0) {										// only if enabled
+					if ( (now - lastReceived) > (resetMegaInterval) ) {    			// if time interval exceeded, reset Mega
+						if (MQTT_DEBUG) {
+							char mqtt_publish_payload[50];
+							String mqtt_publish_string;
+							mqtt_publish_string = "{\"DATA\":\"NO DATA FOR " + time_string_exp(now - lastReceived) + " : RESET MEGA\"}";
+							mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
+							MQTTClient.publish(MQTT_DEBUG_TOPIC,mqtt_publish_payload);
+						}
+						DEBUG_PRINT("No data received for ");DEBUG_PRINT(time_string_exp(now - lastReceived));DEBUG_PRINTLN(": Resetting Mega");
+						pinMode(MEGA_RESET_PIN, OUTPUT);
+						digitalWrite(MEGA_RESET_PIN,false);                         // Change the state of pin to ground
+						delay(1000); 
+						digitalWrite(MEGA_RESET_PIN,true);                          // Change the state of pin to VCC
+						delay(50);
+						lastReceived = millis();									// Fake the last received time to avoid permanent reset
+					  }
+				}
+	
                 // Handle MQTT callback
                 MQTTClient.loop();
                 
