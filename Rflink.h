@@ -1,8 +1,11 @@
 #ifndef H_RFLINK
 #define H_RFLINK
 
+#define BUFFER_SIZE 200                         // Maximum size of one serial line and json content
+#define MAX_DATA_LEN 24                         // Maximum size for record name, record id, json field name and json field value
+#define MAX_TOPIC_LEN 60                        // Maximum topic path size (at least lenght of MQTT_PUBLISH_TOPIC + 2 x MAX_DATA_LEN)
+
 #include <Arduino.h>
-#include "Common.h"
 
 /*********************************************************************************
  * RFLink settings
