@@ -13,7 +13,7 @@
  * Serial and hardware configuration
 /*********************************************************************************/
 
-//SoftwareSerial softSerial(4, 2, false,BUFFER_SIZE+2); // software serial RX from GPIO4/D2 pin (unused pin on ESP01), software serial TX to RFLink on GPIO2/D4 pin - uncomment to use software serial
+//SoftwareSerial softSerial(4, 2, false); // software serial RX from GPIO4/D2 pin (unused pin on ESP01), software serial TX to RFLink on GPIO2/D4 pin - uncomment to use software serial
 auto& debugSerialTX = Serial;                         // debugSerialTX is to show information for debugging - use Serial to write on hardware serial (ESP TX pin) 
 auto& rflinkSerialRX = Serial;                        // rflinkSerialRX is used for data from RFLink - uncomment this line to listen on hardware serial (ESP RX pin)
 auto& rflinkSerialTX = Serial;                      // rflinkSerialTX is used for data to RFLink - uncomment this line and comment following one to write on hardware serial (ESP TX pin)
