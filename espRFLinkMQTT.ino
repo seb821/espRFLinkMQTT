@@ -6,14 +6,16 @@
 #define MAX_TOPIC_LEN 60                        // Maximum topic path size (at least lenght of MQTT_PUBLISH_TOPIC + 2 x MAX_DATA_LEN)
 
 struct USER_ID_STRUCT {
-  char id[MAX_DATA_LEN];        // ID
-  long publish_interval;        // interval to publish (ms) if data did not change
-  char description[60];         // description
+  char id[MAX_DATA_LEN];        	// ID
+  char id_applied[MAX_DATA_LEN];	// ID applied
+  long publish_interval;        	// interval to publish (ms) if data did not change
+  char description[60];         	// description
 };
 
-struct USER_SPECIFIC_ID_STRUCT {  // This is used to force a specific ID for devices changing frequently ; it applies to a specific name/protocol, which means there should be only one device using this protocol
-  char name[MAX_DATA_LEN];      // Name (protocol)
-  char id[MAX_DATA_LEN];        // ID applied
+struct USER_SPECIFIC_ID_STRUCT {      // This is used to force a specific ID for devices changing frequently ; it applies to a specific name/protocol
+  char name[MAX_DATA_LEN];            // Protocol (name)
+  char id_filtered[MAX_DATA_LEN];     // ID sent by the device ; choose ALL to filter only on the protocol => in this case, there should be only one device sending data with the previous protocol
+  char id_applied[MAX_DATA_LEN];      // ID applied
 };
 
 struct USER_CMD_STRUCT {        // Preconfigured commands to show on web interface
@@ -24,23 +26,24 @@ struct USER_CMD_STRUCT {        // Preconfigured commands to show on web interfa
 #include "config.h"
 #include "ArduinoJson.h"
 #include "Rflink.h"
+#include <cont.h>
 
 /*********************************************************************************
  * Global Variables
 /*********************************************************************************/
 
 #if defined(SERIAL_DEBUG) /** Serial debug functions */
-	//#define DEBUG_BEGIN(x)   	debugSerialTX.begin(x)
-	#define DEBUG_PRINT(x)   	debugSerialTX.print(x)
-	#define DEBUG_PRINTF(x,y)  	debugSerialTX.printf(x,y)
-	#define DEBUG_PRINTLN(x) 	debugSerialTX.println(x)
-	#define DEBUG_WRITE(x,y)   	debugSerialTX.write(x,y)
+	//#define DEBUG_BEGIN(x)   	debugSerialTX.begin(x);
+	#define DEBUG_PRINT(x)   	debugSerialTX.print(x);
+	#define DEBUG_PRINTF(x,y)  	debugSerialTX.printf(x,y);
+	#define DEBUG_PRINTLN(x) 	debugSerialTX.println(x);
+	#define DEBUG_WRITE(x,y)   	debugSerialTX.write(x,y);
 #else
-	//#define DEBUG_BEGIN(x)   	{}
-	#define DEBUG_PRINT(x)   	{}
-	#define DEBUG_PRINTF(x,y)  	{}
-	#define DEBUG_PRINTLN(x) 	{}
-	#define DEBUG_WRITE(x, y) 	{}
+	//#define DEBUG_BEGIN(x)   	{};
+	#define DEBUG_PRINT(x)   	{};
+	#define DEBUG_PRINTF(x,y)  	{};
+	#define DEBUG_PRINTLN(x) 	{};
+	#define DEBUG_WRITE(x, y) 	{};
 #endif
   
 bool MQTT_DEBUG = 0;		// debug variable to publish received data on MQTT debug topic ; default is disabled, can be enabled from web interface
@@ -52,15 +55,65 @@ long now;
 long lastReceived = millis();     			      // store last received data time (millis)
 
 struct USER_ID_STRUCT_ALL {
-  char id[10];              // ID
-  long publish_interval;  	// interval to publish (ms) if data did not change
-  char description[60];    	// description
-  char json[BUFFER_SIZE]; 	// store last json message
-  long last_published;    	// store last publish (millis)
-  long last_received;     	// store last received (millis)
+  char id[MAX_DATA_LEN];			// ID
+  char id_applied[MAX_DATA_LEN];	// ID applied
+  long publish_interval;  			// interval to publish (ms) if data did not change
+  char description[60];    			// description
+  char json[BUFFER_SIZE]; 			// store last json message
+  long last_published;    			// store last publish (millis)
+  long last_received;     			// store last received (millis)
 };
-
 USER_ID_STRUCT_ALL matrix[USER_ID_NUMBER];
+
+// structure to store USER_IDs configuration in EEPROM memory
+struct eepromConfig_struct {
+  unsigned long version;
+  USER_ID_STRUCT user_id[USER_ID_NUMBER];
+};
+eepromConfig_struct eepromConfig;
+int eepromAddress = 0;   // Start address for eeprom config
+int eepromLength = 4096;   // Start address for eeprom config
+
+/** Save in EEPROM memory current configuration for USER_IDs*/
+void saveEEPROM() {
+  EEPROM.begin(eepromLength);
+  // Update version number before writing eeprom
+  eepromConfig.version = VERSION;
+  EEPROM.put(eepromAddress, eepromConfig);
+  EEPROM.commit();
+  EEPROM.end();
+  DEBUG_PRINTLN("Config saved to EEPROM");
+}
+
+/** Load USER_IDs from EEPROM memory if version matches */
+void loadEEPROM() {
+  EEPROM.begin(eepromLength);
+  DEBUG_PRINT("EEPROM size: ");DEBUG_PRINTLN(EEPROM.length());
+  EEPROM.get(eepromAddress,eepromConfig);  
+  // Check if program version matches with eeprom version
+  byte version_changed = eepromConfig.version != VERSION;
+  DEBUG_PRINT("Version in EEPROM: ")DEBUG_PRINTLN(eepromConfig.version);
+  if (version_changed) {
+    DEBUG_PRINTLN("Version changed: initialize EEPROM configuration from config.h file for USER_IDs");
+      for (int i =0; i < USER_ID_NUMBER; i++) {
+          strcpy(eepromConfig.user_id[i].id,USER_IDs[i].id);
+          strcpy(eepromConfig.user_id[i].id_applied,USER_IDs[i].id_applied);
+          eepromConfig.user_id[i].publish_interval = USER_IDs[i].publish_interval;
+          strcpy(eepromConfig.user_id[i].description,USER_IDs[i].description);
+      }
+    saveEEPROM();
+  }
+  else DEBUG_PRINTLN("Version OK - using EEPROM configuration for USER_IDs");
+  EEPROM.end();
+  DEBUG_PRINTLN("EEPROM content for USER_IDs:");
+  for (int i =0; i < USER_ID_NUMBER; i++) {
+    DEBUG_PRINT("   ");DEBUG_PRINT(eepromConfig.user_id[i].id);
+    DEBUG_PRINT(" - ");DEBUG_PRINT(eepromConfig.user_id[i].id_applied);	
+    DEBUG_PRINT(" - ");DEBUG_PRINT(eepromConfig.user_id[i].publish_interval);
+    DEBUG_PRINT(" - ");DEBUG_PRINT(eepromConfig.user_id[i].description);
+    DEBUG_PRINTLN();
+  }
+}
 
 // main input / output buffers
 char BUFFER [BUFFER_SIZE];
@@ -124,7 +177,7 @@ void callback(char* topic, byte* payload, unsigned int len) {
  * build MQTT topic name to pubish to using parsed NAME and ID from rflink message
  */
  
-void buildMqttTopic(char *name, char *ID) {
+void buildMqttTopic() {
         MQTT_TOPIC[0] = '\0';
         strcpy(MQTT_TOPIC,MQTT_PUBLISH_TOPIC);
         strcat(MQTT_TOPIC,"/");
@@ -190,11 +243,21 @@ void SetupOTA() {
 
   ArduinoOTA.onError([](ota_error_t error) {
     DEBUG_PRINTF("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) DEBUG_PRINTLN("Auth Failed")
-    else if (error == OTA_BEGIN_ERROR) DEBUG_PRINTLN("Begin Failed")
-    else if (error == OTA_CONNECT_ERROR) DEBUG_PRINTLN("Connect Failed")
-    else if (error == OTA_RECEIVE_ERROR) DEBUG_PRINTLN("Receive Failed")
-    else if (error == OTA_END_ERROR) DEBUG_PRINTLN("End Failed")
+    if (error == OTA_AUTH_ERROR) {
+      DEBUG_PRINTLN("Auth Failed");
+    }
+    else if (error == OTA_BEGIN_ERROR) {
+      DEBUG_PRINTLN("Begin Failed");
+    }
+    else if (error == OTA_CONNECT_ERROR) {
+      DEBUG_PRINTLN("Connect Failed");
+    }
+    else if (error == OTA_RECEIVE_ERROR) {
+      DEBUG_PRINTLN("Receive Failed");
+    }
+    else if (error == OTA_END_ERROR) {
+      DEBUG_PRINTLN("End Failed");
+    }
   });
 
 };
@@ -230,6 +293,7 @@ void ConfigHTTPserver() {
     // Head
     htmlMessage += "<head><title>" + String(MQTT_RFLINK_CLIENT_NAME) + "</title>\r\n";
     htmlMessage += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\r\n";
+    htmlMessage += "<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />\r\n";
 	htmlMessage += "<link rel=\"stylesheet\" type=\"text/css\" href=\"esp.css\">\r\n";
 	htmlMessage += String(cssDatasheet);	// CSS
     htmlMessage += "</head>\r\n";
@@ -242,7 +306,7 @@ void ConfigHTTPserver() {
     htmlMessage += "<h1>" + String(MQTT_RFLINK_CLIENT_NAME) + "</h1>\r\n";
     htmlMessage += "<div class='menubar'><a class='menu active' href='.'>&#8962;<span class='showmenulabel'>Main</span></a>\r\n";
     htmlMessage += "<a class='menu' href='livedata'>&#10740;<span class='showmenulabel'>Live Data</span></a>\r\n";
-    htmlMessage += "<a id='resetmega' class='menu' href='reset-mega' onclick = \"fetch('/reset-mega');return false;\">&#128204;<span class='showmenulabel'>Reset MEGA</span></a>\r\n";
+    htmlMessage += "<a id='resetmega' class='menu' href='/reset-mega' onclick = \"fetch('/reset-mega');return false;\">&#128204;<span class='showmenulabel'>Reset MEGA</span></a>\r\n";
     htmlMessage += "<a class='menu' id='reboot' href='/reboot'>&#128268;<span class='showmenulabel'>Reboot ESP</span></a>\r\n";
     htmlMessage += (!MQTT_DEBUG)? "<a class='menu' href='enable-debug'>&#128172;<span class='showmenulabel'>Enable MQTT debug topic</span></a>\r\n":"<a class='menu' href='disable-debug'>&#128172;<span class='showmenulabel'>Disable MQTT debug topic</span></a>\r\n";
     htmlMessage += "<a class='menu' href='update'>&#128295;<span class='showmenulabel'>Load ESP firmware</span></a></div>\r\n";
@@ -340,8 +404,8 @@ void ConfigHTTPserver() {
     // System Info
     htmlMessage += "<h3>System Info</h3>\r\n";
     htmlMessage += "<table class='normal'>\r\n";
-    htmlMessage += "<tr><td style='min-width:150px;'>Version</td><td style='width:80%;'>20190819</td></tr>\r\n";
-    htmlMessage += "<tr><td>Uptime</td><td>" + String(uptime_string_exp()) + "</td></tr>\r\n";
+    htmlMessage += "<tr><td style='min-width:150px;'>Version</td><td style='width:80%;'>" + String(VERSION) + "</td></tr>\r\n";
+    htmlMessage += "<tr><td>Uptime</td><td>" + String(time_string_exp(millis())) + "</td></tr>\r\n";
     htmlMessage += "<tr><td>WiFi network</td><td>" + String(WiFi.SSID()) + " (" + WiFi.BSSIDstr() + ")</td></tr>\r\n";
     htmlMessage += "<tr><td>WiFi RSSI</td><td>" + String(WiFi.RSSI()) + " dB</td></tr>\r\n";
     htmlMessage += "<tr><td>IP address (MAC)</td><td>" + WiFi.localIP().toString() +" (" + String(WiFi.macAddress()) +")</td></tr>\r\n";
@@ -367,32 +431,35 @@ void ConfigHTTPserver() {
   }
     htmlMessage += "</table></td></tr>\r\n";
     for (int i = 0; i < (sizeof(USER_SPECIFIC_IDs) / sizeof(USER_SPECIFIC_IDs[0])); i++){      // User specific IDs defined in USER_SPECIFIC_IDs
-          htmlMessage += "<tr><td>User specific</td><td>ID for protocol " + String(USER_SPECIFIC_IDs[i].name) + " is forced to " + String(USER_SPECIFIC_IDs[i].id) + "</td></tr>\r\n";
+          htmlMessage += "<tr><td>User specific</td><td>ID for protocol " + String(USER_SPECIFIC_IDs[i].name) + " is forced to " + String(USER_SPECIFIC_IDs[i].id_applied) + "; applies to ID: " + String(USER_SPECIFIC_IDs[i].id_filtered) +"</td></tr>\r\n";
     }
     htmlMessage += "</table><br />\r\n";
 
     // User ID
-    htmlMessage += "<h3>User IDs configuration *</h3>\r\n";
+    htmlMessage += "<h3>User IDs configuration * <a class='button link' href='settings'>Update</a></h3>\r\n";
     if (USER_ID_NUMBER > 0) {                                                                         // show list of user IDs
       int i;
-      htmlMessage += "<table class='multirow'><tr><th>ID</th><th>Description</th><th>Interval</th><th>Received</th><th>Published</th><th style='text-align:left;'>Last MQTT JSON</th></tr>\r\n";
+      htmlMessage += "<table class='multirow'><tr><th>ID</th><th>ID applied</th><th>Description</th><th>Interval</th><th>Received</th><th>Published</th><th style='text-align:left;'>Last MQTT JSON</th></tr>\r\n";
       for (i = 0; i < (USER_ID_NUMBER); i++){
-        htmlMessage += "<tr><td style=\"text-align: center;\">" + String(matrix[i].id) + "</td>";
-        htmlMessage += "<td style=\"text-align: left;\">" + String(matrix[i].description) + "</td>";
-        htmlMessage += "<td style=\"text-align: center;\">" + String( int(float(matrix[i].publish_interval) *0.001 /60)) + " min</td>";
-        if (matrix[i].last_received != 0) {
-          //htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_received)) *0.001 /60 ) ) + " min ago</td>";
-		  htmlMessage += "<td style=\"text-align: center;\">" + time_string_exp(now - matrix[i].last_received) + "</td>";
-        } else {
-          htmlMessage += "<td style=\"text-align: center;\"></td>";
+        if (strcmp(matrix[i].id,"") != 0) {
+          htmlMessage += "<tr><td style=\"text-align: center;\">" + String(matrix[i].id) + "</td>";
+          htmlMessage += "<td style=\"text-align: center;\">" + String(matrix[i].id_applied) + "</td>";
+          htmlMessage += "<td style=\"text-align: left;\">" + String(matrix[i].description) + "</td>";
+          htmlMessage += "<td style=\"text-align: center;\">" + String( int(float(matrix[i].publish_interval) *0.001 /60)) + " min</td>";
+          if (matrix[i].last_received != 0) {
+            //htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_received)) *0.001 /60 ) ) + " min ago</td>";
+  		  htmlMessage += "<td style=\"text-align: center;\">" + time_string_exp(now - matrix[i].last_received) + "</td>";
+          } else {
+            htmlMessage += "<td style=\"text-align: center;\"></td>";
+          }
+          if (matrix[i].last_published != 0) {
+            //htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_published)) *0.001 /60 ) ) + " min ago</td>";
+            htmlMessage += "<td style=\"text-align: center;\">" + time_string_exp(now - matrix[i].last_published) + "</td>";
+          } else {
+            htmlMessage += "<td style=\"text-align: center;\"></td>";
+          }
+          htmlMessage += "<td>" + String(matrix[i].json) + "</td></tr>\r\n";
         }
-        if (matrix[i].last_published != 0) {
-          //htmlMessage += "<td style=\"text-align: center;\">" + String( int( (float(now) - float(matrix[i].last_published)) *0.001 /60 ) ) + " min ago</td>";
-          htmlMessage += "<td style=\"text-align: center;\">" + time_string_exp(now - matrix[i].last_published) + "</td>";
-        } else {
-          htmlMessage += "<td style=\"text-align: center;\"></td>";
-        }
-        htmlMessage += "<td>" + String(matrix[i].json) + "</td></tr>\r\n";
       }
       htmlMessage += "</table>\r\n";
       htmlMessage += "<div class='note'>* only those IDs are published on MQTT server, and only if data changed or interval time is exceeded</div>\r\n";
@@ -400,7 +467,7 @@ void ConfigHTTPserver() {
       htmlMessage += "<div class='note'>* all IDs are forwarded to MQTT server</div>\r\n";
     }
     //htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
-    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + uptime_string_exp() + " </span>\r\n";
+    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + time_string_exp(millis()) + " </span>\r\n";
     htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";
     htmlMessage += "<footer><br><h6>Powered by <a href='https://github.com/seb821' style='font-size: 15px; text-decoration: none'>github.com/seb821</a></h6></footer>\r\n";
     htmlMessage += "</body>\r\n</html>\r\n";
@@ -428,17 +495,8 @@ void ConfigHTTPserver() {
     htmlMessage += "<h1>" + String(MQTT_RFLINK_CLIENT_NAME) + "</h1>\r\n";
     htmlMessage += "<div class='menubar'><a class='menu' href='.'>&#8962;<span class='showmenulabel'>Main</span></a>\r\n";
     htmlMessage += "<a class='menu active' href='livedata'>&#10740;<span class='showmenulabel'>Live Data</span></a>\r\n";
-    htmlMessage += "<a id='resetmega' class='menu' href='#'>&#128204;<span class='showmenulabel'>Reset MEGA</span></a>\r\n";
-    htmlMessage += "<script>document.getElementById(\"resetmega\").onclick = function(e) {\r\n"
-		"var wnd = window.open(\"reset-mega\")\r\n"
-		"wnd.close();e.preventDefault();};</script>";
-    htmlMessage += "<a class='menu' id='reboot' href='reboot'>&#128268;<span class='showmenulabel'>Reboot ESP</span></a>\r\n";
-    htmlMessage += "<script>document.getElementById(\"reboot\").onclick = function(e) {\r\n"
-		"var wnd = window.open(\"reboot\")\r\n"
-		"wnd.close();e.preventDefault();"
-		// onreload on main page // "setTimeout(function(){ location.reload(); }, 5000);" //
-		"};"
-		"</script>";
+    htmlMessage += "<a id='resetmega' class='menu' href='/reset-mega' onclick = \"fetch('/reset-mega');return false;\">&#128204;<span class='showmenulabel'>Reset MEGA</span></a>\r\n";
+    htmlMessage += "<a class='menu' id='reboot' href='/reboot'>&#128268;<span class='showmenulabel'>Reboot ESP</span></a>\r\n";
     htmlMessage += (!MQTT_DEBUG)? "<a class='menu' href='enable-debug'>&#128172;<span class='showmenulabel'>Enable MQTT debug topic</span></a>\r\n":"<a class='menu' href='disable-debug'>&#128172;<span class='showmenulabel'>Disable MQTT debug topic</span></a>\r\n";
     htmlMessage += "<a class='menu' href='update'>&#128295;<span class='showmenulabel'>Load ESP firmware</span></a></div>\r\n";
     htmlMessage += "</header>\r\n";
@@ -540,7 +598,7 @@ void ConfigHTTPserver() {
 		"}\r\n"
 		"</script>\r\n";
     //htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + String( int(float(now) *0.001 /60)) + " minutes </span>\r\n";
-    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + uptime_string_exp() + " </span>\r\n";
+    htmlMessage += "<span style=\"font-size: 0.9em\">Running for " + time_string_exp(millis()) + " </span>\r\n";
     htmlMessage += "<input type=\"button\" value =\"Refresh\" onclick=\"window.location.reload(true);\" />\r\n";
     htmlMessage += "<footer><br><h6>Powered by <a href='https://github.com/seb821' style='font-size: 15px; text-decoration: none'>github.com/seb821</a></h6></footer>\r\n";
     htmlMessage += "</body>\r\n</html>\r\n";
@@ -552,7 +610,7 @@ void ConfigHTTPserver() {
     DEBUG_PRINTLN("Rebooting device...");
     //httpserver.sendHeader("Location","/");                    // Add a header to respond with a new location for the browser to go to the home page again
     //httpserver.send(303);                                     // Send it back to the browser with an HTTP status 303 (See Other) to redirect
-    httpserver.send(200, "text/html", "Rebooting...");
+    httpserver.send(200, "text/html", "Rebooting... <a href='/'>Home</a>");
 	  delay(500);
     ESP.restart();
     //ESP.reset();
@@ -563,9 +621,11 @@ void ConfigHTTPserver() {
     httpserver.send(200, "text/html", "Resetting Mega...");
     delay(500);
     pinMode(MEGA_RESET_PIN, OUTPUT);
+    delay(200);
     digitalWrite(MEGA_RESET_PIN,false);                         // Change the state of pin to ground
     delay(1000); 
     digitalWrite(MEGA_RESET_PIN,true);                          // Change the state of pin VCC
+    delay(50);
 
 	});
 
@@ -615,6 +675,107 @@ void ConfigHTTPserver() {
     httpserver.send(200, "text/html", "<td>" + String(BUFFER) + "</td><td>" + String(MQTT_TOPIC) + "</td><td>" + String(JSON) + "</td>\r\n");
   });
 
+  httpserver.on("/wifi-scan", [](){
+	int numberOfNetworks = WiFi.scanNetworks();
+	String htmlMessage = "";
+	for(int i =0; i<numberOfNetworks; i++){
+		htmlMessage += String(WiFi.SSID(i)) + ":  " + String(WiFi.RSSI(i)) +" dBm<br>\r\n";
+   
+	}
+    httpserver.send(200, "text/html", htmlMessage);
+  });
+
+  httpserver.on("/infos", [](){
+    String htmlMessage = "";
+    htmlMessage += "Free Mem : " + String (ESP.getFreeHeap()) + "<br>\r\n";
+    register uint32_t *sp asm("a1");
+    htmlMessage += "Free Stack : " +  String(4 * (sp - g_pcont->stack) ) + "<br>\r\n";
+    htmlMessage += "Heap Max Free Block : " + String(ESP.getMaxFreeBlockSize()) + "<br>\r\n"; 
+    htmlMessage += "Heap Fragmentation : " + String (ESP.getHeapFragmentation()) + "%<br>\r\n";
+    htmlMessage += "Uptime : " + String(uptime_min()) + " min<br>\r\n"; 
+    httpserver.send(200, "text/html", htmlMessage);
+  });
+  
+  httpserver.on("/settings", [](){                // Used change USER_IDs configuration in EEPROM
+	int i;
+	String arg_line = httpserver.arg("line");
+	String arg_id = httpserver.arg("id");
+	String arg_id_applied = httpserver.arg("id_applied");
+	String arg_description = httpserver.arg("description");
+	String arg_publish_interval = httpserver.arg("publish_interval");
+	if (arg_line.length() > 0) {
+	  i = arg_line.toInt();
+	  if (i <= USER_ID_NUMBER) {
+		arg_id.toCharArray(eepromConfig.user_id[i].id,MAX_DATA_LEN);
+		arg_id_applied.toCharArray(eepromConfig.user_id[i].id_applied,MAX_DATA_LEN);
+		arg_description.toCharArray(eepromConfig.user_id[i].description,60);
+		eepromConfig.user_id[i].publish_interval = arg_publish_interval.toInt();
+	  }
+	}
+		
+    String htmlMessage = "<!DOCTYPE html>\r\n<html>\r\n";
+
+    // Head
+    htmlMessage += "<head><title>" + String(MQTT_RFLINK_CLIENT_NAME) + " - Settings</title>\r\n";
+    htmlMessage += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\r\n";
+    htmlMessage += "<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />\r\n";
+    htmlMessage += "</head>\r\n";
+
+    // Body
+   htmlMessage += "<body class='bodymenu'>\r\n";
+
+   if (USER_ID_NUMBER > 0) {                      // show list of user IDs
+	  htmlMessage += "<a href='/'>Home</a><br>\r\n";
+      htmlMessage += "<table class='multirow'><tr><th>ID</th><th>ID applied</th><th>Description</th><th>Interval (ms)  </th></tr>\r\n";
+      for (i = 0; i < (USER_ID_NUMBER); i++){
+        htmlMessage += "<form method='get' action='settings'><input type='hidden' name='line' value=" + String(i) + "><tr>";
+        htmlMessage += "<td style=\"text-align: center;\"><input type='text' name='id' size='MAX_DATA_LEN' value='" + String(eepromConfig.user_id[i].id) + "'></td>";
+        htmlMessage += "<td style=\"text-align: center;\"><input type='text' name='id_applied' size='MAX_DATA_LEN' value='" + String(eepromConfig.user_id[i].id_applied) + "'></td>";
+        htmlMessage += "<td style=\"text-align: left;\"><input type='text' name='description' size='60' value='" + String(eepromConfig.user_id[i].description) + "'></td>";
+        htmlMessage += "<td style=\"text-align: center;\"><input type='number' name='publish_interval' step='1000' value='" + String(eepromConfig.user_id[i].publish_interval) + "'</td>";
+        htmlMessage += "<td><input type='submit' value='Apply'></td></tr></form>\r\n";
+      }
+      htmlMessage += "</table><br>\r\n";
+      htmlMessage += "<form method='get' action='save-eeprom'><input type='submit' value='Save to EEPROM'> (update USER_IDs with above configuration)</form>";  
+      htmlMessage += "<br>Code to update USER_IDs[] in config.h with current eeprom configuration:\r\n";
+      htmlMessage += "<xmp>";
+      for (i = 0; i < (USER_ID_NUMBER); i++){
+        String str_description = String(eepromConfig.user_id[i].description);     
+        htmlMessage += "  {\"" + String(eepromConfig.user_id[i].id) + "\",\"" + String(eepromConfig.user_id[i].id_applied) + "\"," + String(eepromConfig.user_id[i].publish_interval) + ",\"" + str_description + "\"}, //" + (i+1) + "\r\n";
+      }
+      htmlMessage += "</xmp>\r\n";
+      htmlMessage += "<form method='get' action='erase-eeprom'><input type='submit' value='Erase EEPROM'> (restore USER_IDs from firmware)</form>";	
+    }
+  
+	htmlMessage += "</body></html>";
+    httpserver.send(200, "text/html", htmlMessage);
+  });
+
+  httpserver.on("/save-eeprom",[](){                                  // Reboot ESP
+    DEBUG_PRINTLN("Saving EEPROM");
+    saveEEPROM();
+    DEBUG_PRINTLN("Rebooting device...");
+    httpserver.send(200, "text/html", "EEPROM saved, rebooting... <a href='/settings'>Settings</a>");
+    delay(500);
+    ESP.restart();
+    //ESP.reset();
+  });
+
+  httpserver.on("/erase-eeprom",[](){                                  // Reboot ESP
+    DEBUG_PRINTLN("Erasing EEPROM");
+	EEPROM.begin(eepromLength);
+	for (int i = eepromAddress; i < (eepromAddress + eepromLength); i++) {
+	EEPROM.write(i, 0);
+	EEPROM.end();
+	}
+    DEBUG_PRINTLN("Rebooting device...");
+    httpserver.send(200, "text/html", "EEPROM erased, rebooting... <a href='/settings'>Settings</a>");
+    delay(500);
+    ESP.restart();
+    //ESP.reset();
+	
+  });
+  
   httpserver.onNotFound([](){
     httpserver.send(404, "text/plain", "404: Not found");      	// Send HTTP status 404 (Not Found) when there's no handler for the URI in the request
   });
@@ -666,6 +827,7 @@ long uptime_min()
  return mins;
 }
 
+/*
 String uptime_string_exp()
 {
   String result;
@@ -678,7 +840,7 @@ String uptime_string_exp()
   sprintf_P(strUpTime, PSTR("%d days %d hours %d minutes"), days, hrs, minutes);
   result = strUpTime;
   return result;
-} 
+} */
 
 String time_string_exp(long time)
 {
@@ -690,8 +852,9 @@ String time_string_exp(long time)
   //int hrs = minutes / 60;
   int hrs = ( minutes / 60 ) + ( days * 24 );
   minutes = minutes % 60;
-  //sprintf_P(strUpTime, PSTR("%d d %d h %d min"), days, hrs, minutes);
-  if (hrs > 0) {
+  if (days > 0) {
+    sprintf_P(strUpTime, PSTR("%d d %d h %d min"), days, hrs, minutes);
+  } else if (hrs > 0) {
 	  sprintf_P(strUpTime, PSTR("%d h %d min"), hrs, minutes);
   } else {
 	  sprintf_P(strUpTime, PSTR("%d min"), minutes);
@@ -699,32 +862,6 @@ String time_string_exp(long time)
   result = strUpTime;
   return result;
 } 
-
-/**
- * Miscellaneous
- */
-
-boolean isNumeric(String str) {
-    unsigned int stringLength = str.length();
-    if (stringLength == 0) {
-        return false;
-    }
-    boolean seenDecimal = false;
-    for(unsigned int i = 0; i < stringLength; ++i) {
-        if (isDigit(str.charAt(i))) {
-            continue;
-        }
-        if (str.charAt(i) == '.') {
-            if (seenDecimal) {
-                return false;
-            }
-            seenDecimal = true;
-            continue;
-        }
-        return false;
-    }
-    return true;
-}
 
 
 /*********************************************************************************
@@ -738,15 +875,19 @@ void setup() {
         
         //DEBUG_BEGIN(115200);
         debugSerialTX.begin(57600);        // debug serial : same speed as RFLInk
-        DEBUG_PRINTLN();
-        DEBUG_PRINTLN(F("Starting..."));
+
 			while (!debugSerialTX) {
 					; // wait for serial port to connect. Needed for native USB port only
 			}
+        delay(1000);
+        DEBUG_PRINTLN();
         DEBUG_PRINTLN(F("Init debug serial done"));
+
+        DEBUG_PRINTLN(F("Starting..."));
 
         // Set the data rate for the RFLink serial
         rflinkSerialTX.begin(57600);
+        DEBUG_PRINTLN();
         DEBUG_PRINTLN(F("Init rflink serial done"));
 
         // Setup WIFI
@@ -777,12 +918,26 @@ void setup() {
         delay(100);
     		rflinkSerialTX.println(F("10;version;"));                   	// Ask version to RFLink
 
+
+   if (USER_ID_NUMBER > 0) {
+        /*
         // Get values from USER_IDs into matrix
         for (int i =0; i < USER_ID_NUMBER; i++) {
             strcpy(matrix[i].id,USER_IDs[i].id);
             matrix[i].publish_interval = USER_IDs[i].publish_interval;
             strcpy(matrix[i].description,USER_IDs[i].description);
         }
+        */
+        // Load USER_IDs from EEPROM
+          loadEEPROM();
+        // Get values into matrix
+        for (int i =0; i < USER_ID_NUMBER; i++) {
+            strcpy(matrix[i].id,eepromConfig.user_id[i].id);
+			strcpy(matrix[i].id_applied,eepromConfig.user_id[i].id_applied);
+            matrix[i].publish_interval = eepromConfig.user_id[i].publish_interval;
+            strcpy(matrix[i].description,eepromConfig.user_id[i].description);
+        }
+   }
 
 } // setup
 
@@ -825,79 +980,93 @@ void loop() {
 						
                         readRfLinkPacket(BUFFER);
 						
-						if ( (strcmp(MQTT_ID,"") != 0) && (strcmp(MQTT_ID,"0\0") != 0) ) lastReceived = millis();				// Store last received data time if MQTT_ID is valid
+						if ( (strcmp(MQTT_ID,"") != 0) && (strcmp(MQTT_ID,"0\0") != 0) ) lastReceived = millis();	// Store last received data time if MQTT_ID is valid
 						            
-                        for (int i = 0; i < (sizeof(USER_SPECIFIC_IDs) / sizeof(USER_SPECIFIC_IDs[0])); i++){      // User specific IDs defined in USER_SPECIFIC_IDs
-                          if (strcmp(MQTT_NAME,USER_SPECIFIC_IDs[i].name) == 0) strcpy( MQTT_ID , USER_SPECIFIC_IDs[i].id);  // XXX force specific ID for specific name/protocol
+                        for (int i = 0; i < (sizeof(USER_SPECIFIC_IDs) / sizeof(USER_SPECIFIC_IDs[0])); i++){	// User specific IDs defined in USER_SPECIFIC_IDs
+                          if (strcmp(MQTT_NAME,USER_SPECIFIC_IDs[i].name) == 0){    							// check if protocol / name matches
+                            if (strcmp(USER_SPECIFIC_IDs[i].id_filtered,"ALL") == 0) {   						// applies new ID to all IDs for specific name/protocol
+                              strcpy( MQTT_ID , USER_SPECIFIC_IDs[i].id_applied);
+                            } else if (strcmp(USER_SPECIFIC_IDs[i].id_filtered,MQTT_ID) == 0) {
+                                strcpy( MQTT_ID , USER_SPECIFIC_IDs[i].id_applied);       						// applies new ID to specific ID for specific name/protocol
+                            }
+                          }
                         }
-                          
-                        // construct topic name to publish to
-                        buildMqttTopic(MQTT_NAME, MQTT_ID);
-
+						
+						// construct topic name to publish to
+						buildMqttTopic();																   
                         // report message for debugging
                         printToSerial();
                         //if (MQTT_DEBUG) MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER);      // MQTT debug mode, raw data only
-            						if (MQTT_DEBUG) {													                          // MQTT debug mode with json, full data
-            							strcpy(BUFFER_DEBUG,"{");
-            							strcat(BUFFER_DEBUG,"\"DATA\":\"");strncat(BUFFER_DEBUG,BUFFER,strlen(BUFFER)-2);strcat(BUFFER_DEBUG,"\"");
-                          strcat(BUFFER_DEBUG,"}");
-                          MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG);
-                          strcpy(BUFFER_DEBUG,"{");
-            							strcat(BUFFER_DEBUG,"\"ID\":\"");strcat(BUFFER_DEBUG,MQTT_ID);strcat(BUFFER_DEBUG,"\"");
-            							strcat(BUFFER_DEBUG,",\"NAME\":\"");strcat(BUFFER_DEBUG,MQTT_NAME);strcat(BUFFER_DEBUG,"\"");
-            							strcat(BUFFER_DEBUG,",\"TOPIC\":\"");strcat(BUFFER_DEBUG,MQTT_TOPIC);strcat(BUFFER_DEBUG,"\"");
-            							strcat(BUFFER_DEBUG,"}");
-            							MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG);
-                          strcpy(BUFFER_DEBUG,"{");
-                          strcpy(JSON_DEBUG,JSON);
-                          for (char* p = JSON_DEBUG; p = strchr(p, '\"'); ++p) {*p = '\'';} // Remove quotes
-                          strcat(BUFFER_DEBUG,"\"JSON\":\"");strcat(BUFFER_DEBUG,JSON_DEBUG);strcat(BUFFER_DEBUG,"\"");
-                          strcat(BUFFER_DEBUG,"}");
-                          MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG); // publish in several times to avoid changing MQTT_MAX_PACKET_SIZE in PubSubClient.h
-                          
-            						}
+						if (MQTT_DEBUG) {										// MQTT debug mode with json, full data
+							strcpy(BUFFER_DEBUG,"{");
+							strcat(BUFFER_DEBUG,"\"DATA\":\"");strncat(BUFFER_DEBUG,BUFFER,strlen(BUFFER)-2);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,",\"ID\":\"");strcat(BUFFER_DEBUG,MQTT_ID);strcat(BUFFER_DEBUG,"\""); // XXX
+							strcat(BUFFER_DEBUG,"}");
+							MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG);
+							strcpy(BUFFER_DEBUG,"{");
+							strcat(BUFFER_DEBUG,"\"ID\":\"");strcat(BUFFER_DEBUG,MQTT_ID);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,",\"NAME\":\"");strcat(BUFFER_DEBUG,MQTT_NAME);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,",\"TOPIC\":\"");strcat(BUFFER_DEBUG,MQTT_TOPIC);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,"}");
+							MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG);
+							strcpy(BUFFER_DEBUG,"{");
+							strcpy(JSON_DEBUG,JSON);
+							for (char* p = JSON_DEBUG; p = strchr(p, '\"'); ++p) {*p = '\'';} // Remove quotes
+							strcat(BUFFER_DEBUG,"\"JSON\":\"");strcat(BUFFER_DEBUG,JSON_DEBUG);strcat(BUFFER_DEBUG,"\"");
+							strcat(BUFFER_DEBUG,",\"ID\":\"");strcat(BUFFER_DEBUG,MQTT_ID);strcat(BUFFER_DEBUG,"\""); // XXX
+							strcat(BUFFER_DEBUG,"}");
+							MQTTClient.publish(MQTT_DEBUG_TOPIC,BUFFER_DEBUG); // publish in several times to avoid changing MQTT_MAX_PACKET_SIZE in PubSubClient.h
+							}
                         
-                        // XXX publish to MQTT server only if ID is authorized
+
+                        
+						// XXX publish to MQTT server only if ID is authorized
                         
                         if (USER_ID_NUMBER > 0) {
                           
-                          int i;
-                          for (i = 0; i < (USER_ID_NUMBER); i++){
-                            
-                            DEBUG_PRINT("ID = ");DEBUG_PRINT(matrix[i].id);
-                            DEBUG_PRINT(" ; publish_interval = ");DEBUG_PRINT(matrix[i].publish_interval);
-                            DEBUG_PRINT(" ; decription = ");DEBUG_PRINT(matrix[i].description);
-                            DEBUG_PRINT(" ; json = ");DEBUG_PRINT(matrix[i].json);
-                            DEBUG_PRINT(" ; last_published = ");DEBUG_PRINT(matrix[i].last_published);
-                            DEBUG_PRINT(" ; last_received = ");DEBUG_PRINTLN(matrix[i].last_received);
-                            
-                            if (strcmp(MQTT_ID,matrix[i].id) == 0) {                                      	// check ID is authorized
-                              DEBUG_PRINT("Authorized ID ");DEBUG_PRINT(MQTT_ID);
-                              matrix[i].last_received = millis();                                         	// memorize received time
-                              if (strcmp(matrix[i].json,JSON) != 0) {                                     	// check if json value has changed
-                                DEBUG_PRINT(" => data changed => published on ");DEBUG_PRINTLN(MQTT_TOPIC);
-                                MQTTClient.publish(MQTT_TOPIC,JSON);                           			  	    // if changed, publish on MQTT server  
-                                strcpy(matrix[i].json,JSON);                                              	// memorize new json value
-                                matrix[i].last_published = millis();                                      	// memorize published time                                
-                              } else {                                                                    	// no value change
-                                now = millis();
-                                if ( (now - matrix[i].last_published) > (matrix[i].publish_interval) ) {   	// check if it exceeded time for last publish
-                                  DEBUG_PRINT(" => no data change but max time interval exceeded => published on ");DEBUG_PRINTLN(MQTT_TOPIC);
-                                  MQTTClient.publish(MQTT_TOPIC,JSON);                             			    // publish on MQTT server
-                                  matrix[i].last_published = millis();                               		    // memorize published time
-                                } else {
-                                  DEBUG_PRINTLN(" => no data change => not published");
-                                }
-                              }   // no data changed
-                            }     // authorized id
-                            
-                          }       // for
+						int i;
+							for (i = 0; i < (USER_ID_NUMBER); i++){
+								DEBUG_PRINT("ID = ");DEBUG_PRINT(matrix[i].id);
+								DEBUG_PRINT(" ; ID_applied = ");DEBUG_PRINT(matrix[i].id_applied);
+								DEBUG_PRINT(" ; publish_interval = ");DEBUG_PRINT(matrix[i].publish_interval);
+								DEBUG_PRINT(" ; decription = ");DEBUG_PRINT(matrix[i].description);
+								DEBUG_PRINT(" ; json = ");DEBUG_PRINT(matrix[i].json);
+								DEBUG_PRINT(" ; last_published = ");DEBUG_PRINT(matrix[i].last_published);
+								DEBUG_PRINT(" ; last_received = ");DEBUG_PRINTLN(matrix[i].last_received);
+
+								if (strcmp(MQTT_ID,matrix[i].id) == 0) {                                      	// check ID is authorized
+								  DEBUG_PRINT("Authorized ID ");DEBUG_PRINT(MQTT_ID);
+								  matrix[i].last_received = millis();                                         	// memorize received time
+								  if (strcmp(matrix[i].id_applied,"") != 0 ) {									// apply different ID if available
+									 strcpy(MQTT_ID,matrix[i].id_applied);
+									 buildMqttTopic();															// rebuild MQTT_TOPIC
+								  }
+								  if (strcmp(matrix[i].json,JSON) != 0) {                                     	// check if json value has changed
+									DEBUG_PRINT(" => data changed => published on ");DEBUG_PRINTLN(MQTT_TOPIC);
+									MQTTClient.publish(MQTT_TOPIC,JSON);                           			  	// if changed, publish on MQTT server  
+									strcpy(matrix[i].json,JSON);                                              	// memorize new json value
+									matrix[i].last_published = millis();                                      	// memorize published time                                
+								  } else {                                                                    	// no value change
+									now = millis();
+									if ( (now - matrix[i].last_published) > (matrix[i].publish_interval) ) {   	// check if it exceeded time for last publish
+									  DEBUG_PRINT(" => no data change but max time interval exceeded => published on ");DEBUG_PRINTLN(MQTT_TOPIC);
+									  MQTTClient.publish(MQTT_TOPIC,JSON);                             			    // publish on MQTT server
+									  matrix[i].last_published = millis();                               		    // memorize published time
+									} else {
+									  DEBUG_PRINTLN(" => no data change => not published");
+									}
+								  }   // no data changed
+								break;
+								}     // authorized id
+							}       // for
                           
                         } else {                                                	// case all IDs are authorized
-                          MQTTClient.publish(MQTT_TOPIC,JSON);                   	// publish on MQTT server
+							MQTTClient.publish(MQTT_TOPIC,JSON);                   	// publish on MQTT server
                         }
                         DEBUG_PRINTLN();
-                        //pubFlatMqtt(MQTT_TOPIC,JSON);								            // expands JSON and publish on several topics
+                        //pubFlatMqtt(MQTT_TOPIC,JSON);								            // expands JSON and publish on several top
+						
+
                 } // end of DataReady
 
 				now = millis();
@@ -906,25 +1075,31 @@ void loop() {
                 if ( (now - lastUptime) > (uptimeInterval) ) {    					// if uptime interval is exceeded
 					char mqtt_publish_payload[50];
 					lastUptime = now;
-					String mqtt_publish_string = String(uptime_min());
-					mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
+          sprintf(mqtt_publish_payload,"%ld", uptime_min());
+          //itoa(uptime_min(), mqtt_publish_payload, 10);
+					//String mqtt_publish_string = String(uptime_min());
+					//mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
 					MQTTClient.publish(MQTT_UPTIME_TOPIC,mqtt_publish_payload);
-					DEBUG_PRINT("Uptime : ");DEBUG_PRINTLN(uptime_string_exp());
+					DEBUG_PRINT("Uptime : ");DEBUG_PRINTLN(time_string_exp(millis()));
                 }
 				  
 				// Handle Mega reset if no data is received
 				if (resetMegaInterval > 0) {										// only if enabled
 					if ( (now - lastReceived) > (resetMegaInterval) ) {    			// if time interval exceeded, reset Mega
             resetMegaCounter += 1;
-						#ifdef MQTT_MEGA_RESETS_TOPIC
+						#if defined(MQTT_MEGA_RESETS_TOPIC)
 							char mqtt_publish_payload[50];
-							String mqtt_publish_string;
-              mqtt_publish_string = resetMegaCounter;
-							mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
+              sprintf(mqtt_publish_payload,"%ld", resetMegaCounter);
+              //itoa(resetMegaCounter, mqtt_publish_payload, 10);
+							//String mqtt_publish_string;
+              //mqtt_publish_string = resetMegaCounter;
+							//mqtt_publish_string.toCharArray(mqtt_publish_payload, mqtt_publish_string.length() + 1);
 							MQTTClient.publish(MQTT_MEGA_RESETS_TOPIC,mqtt_publish_payload);
 						#endif
 						DEBUG_PRINT("No data received for ");DEBUG_PRINT(time_string_exp(now - lastReceived));DEBUG_PRINTLN(": Resetting Mega");
+            delay(1000);
 						pinMode(MEGA_RESET_PIN, OUTPUT);
+            delay(200);
 						digitalWrite(MEGA_RESET_PIN,false);                         // Change the state of pin to ground
 						delay(1000); 
 						digitalWrite(MEGA_RESET_PIN,true);                          // Change the state of pin to VCC

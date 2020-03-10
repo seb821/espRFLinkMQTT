@@ -15,10 +15,11 @@ The following capabilities were added:
 - Uptime published on MQTT server every 5 minutes
 - OTA firmware update from webserver
 - Send commands from web interface with possibility to setup a predefined user list
-- Change easily serial interface to be used : hardware serial RX/TX, software serial on user defined pins, or a mix ; by default it listens to RFLink MEGA on ESP RX pin and writes to RFLink MEGA with software serial on ESP GPIO2/D4
+- Change easily serial interface to be used : hardware serial RX/TX, software serial on user defined pins, or a mix ; by default it listens to RFLink MEGA on ESP RX pin and writes to RFLink MEGA on ESP TX
 - Handles negative values for fields TMP, WINCHL, WINTMP
+- Handles HUM as an integer
 - Check data received is ASCII
-- Possibility to publish only a list of user IDs to MQTT server. In addition, possibility to publish only on data change but still to publish after a user defined time frame (disabled by default - change USER_ID_NUMBER and USER_IDs to enable)
+- Possibility to publish only a list of user IDs to MQTT server. In addition, possibility to publish only on data change but still to publish after a user defined time frame (disabled by default - change USER_ID_NUMBER and USER_IDs to enable). Possibility as well to defined a different ID to be published (usefull when a device gets a new ID after battery change)
 - Possibility to force a specific ID for devices changing frequently ; it applies to a specific name/protocol, which means there should be only one device around using this protocol (change USER_SPECIFIC_IDs)
 - Show setup information on web interface plus last received / published time for each defined USER ID
 - Use of [ESP Easy](https://github.com/letscontrolit/ESPEasy) CSS for nice web interface
@@ -36,16 +37,10 @@ The following capabilities were added:
 	- ArduinoJson library 5.13.x, not version 6.x.x (Sketch > Include Library > Manage Librairies > ArduinoJson > Select version 5.13.x > Install)
 	- PubSubClient
 - Upload to ESP
-- Wire serial as defined in serial configuration ; **wire ESP RX pin to RFLink MEGA TX pin, and ESP GPIO2/D4 pin to RFLINK MEGA RX pin** (this is default, see note below to change it)
+- Wire serial as defined in serial configuration ; **wire ESP RX pin to RFLink MEGA TX pin, and ESP TX pin to RFLINK MEGA RX pin** (this is default, see note below to change it)
 - To handle hardware reset of RFLink MEGA from ESP, wire ESP GPIO/D3 pin to RFLink MEGA RST (this is default ; it can be changed with MEGA_RESET_PIN in config.h)
 - Subscribe to MQTT topic 'rflink/#'
 - Use web interface by pointing your http browser to ESP IP
-
-**Note**:  If you want to use **ESP RX/TX** connected to RFLink MEGA TX/RX, you need to change this:
-- uncomment line "auto& rflinkSerialTX = Serial;"
-- comment line "SoftwareSerial& rflinkSerialTX = softSerial;"
-
-Please do note hesitate to come and discuss about it on [Jeedom forum](https://www.jeedom.com/forum/viewtopic.php?t=39766)
 
 ## How to use
 

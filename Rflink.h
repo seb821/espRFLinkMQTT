@@ -15,11 +15,12 @@
 #define RFLINK_PACKET_MIN_SIZE 8
 
 // Rflink value type tags
-#define RFLINK_VALUE_TYPE_INTEGER     0
+#define RFLINK_VALUE_TYPE_HEX_INTEGER     0
 #define RFLINK_VALUE_TYPE_STRING      1
 #define RFLINK_VALUE_TYPE_FLOAT_NEG   2
 #define RFLINK_VALUE_TYPE_FLOAT       3
 #define RFLINK_VALUE_TYPE_RAWVAL      4
+#define RFLINK_VALUE_TYPE_DEC_INTEGER     5
 
 
 // main input / output buffers
@@ -72,6 +73,12 @@ const char* const PROGMEM RFLINK_FIELD_HEXINT[] = {
         "\0" // do not remove this mark the end of the array
 };
 
+// list of fields with integer that must be converted to decimal integer
+const char PROGMEM RFLINK_FIELD_NAME_HUM[]        = "HUM";
+const char* const PROGMEM RFLINK_FIELD_DECINT[] = {
+        RFLINK_FIELD_NAME_HUM,
+        "\0" // do not remove this mark the end of the array
+};
 
 // list of detected MQTT names that implies no json convertion, but a direct copy of the buffer
 const char PROGMEM RFLINK_MQTT_NAME_DEBUG[]      = "DEBUG";
@@ -135,11 +142,13 @@ bool RfLinkFieldIsString(char *buffer);
 bool RfLinkFieldIsHexFloat10Neg(char *buffer);
 bool RfLinkFieldIsHexFloat10(char *buffer);
 bool RfLinkFieldIsHexInteger(char *buffer);
+bool RfLinkFieldIsDecInteger(char *buffer);
 
 void RfLinkFieldAddQuotedValue (char *buffer);
 void RfLinkFieldAddHexFloat10NegValue (char *buffer);
 void RfLinkFieldAddHexFloat10Value (char *buffer);
-void RfLinkFieldAddIntegerValue(char *buffer);
+void RfLinkFieldAddHexIntegerValue(char *buffer);
+void RfLinkFieldAddDecIntegerValue(char *buffer);
 
 // bool RfLinkIsStringInArray(char *buffer, char* strArray[]);
 bool RfLinkIsStringInArray(char *buffer, const char* const strArray[]);

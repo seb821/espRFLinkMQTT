@@ -131,7 +131,8 @@ void readRfLinkFields(char* fields, int start){
                         if(RfLinkFieldIsString(FIELD_BUF)) valueType=RFLINK_VALUE_TYPE_STRING;
                         else if(RfLinkFieldIsHexFloat10Neg(FIELD_BUF)) valueType=RFLINK_VALUE_TYPE_FLOAT_NEG;
                         else if(RfLinkFieldIsHexFloat10(FIELD_BUF)) valueType=RFLINK_VALUE_TYPE_FLOAT;
-                        else if(RfLinkFieldIsHexInteger(FIELD_BUF)) valueType=RFLINK_VALUE_TYPE_INTEGER;
+                        else if(RfLinkFieldIsHexInteger(FIELD_BUF)) valueType=RFLINK_VALUE_TYPE_HEX_INTEGER;
+                        else if(RfLinkFieldIsDecInteger(FIELD_BUF)) valueType=RFLINK_VALUE_TYPE_DEC_INTEGER;
                         else valueType=RFLINK_VALUE_TYPE_RAWVAL;
                         
                         RfLinkFieldAddQuotedValue(FIELD_BUF);
@@ -151,7 +152,8 @@ void readRfLinkFields(char* fields, int start){
                         case RFLINK_VALUE_TYPE_STRING:  RfLinkFieldAddQuotedValue(FIELD_BUF); break;
                         case RFLINK_VALUE_TYPE_FLOAT_NEG:  RfLinkFieldAddHexFloat10NegValue(FIELD_BUF); break;
                         case RFLINK_VALUE_TYPE_FLOAT:  RfLinkFieldAddHexFloat10Value(FIELD_BUF); break;
-                        case RFLINK_VALUE_TYPE_INTEGER: RfLinkFieldAddIntegerValue(FIELD_BUF); break;
+                        case RFLINK_VALUE_TYPE_HEX_INTEGER: RfLinkFieldAddHexIntegerValue(FIELD_BUF); break;
+                        case RFLINK_VALUE_TYPE_DEC_INTEGER: RfLinkFieldAddDecIntegerValue(FIELD_BUF); break;
                         default: strcat(JSON,FIELD_BUF);
                         }
 
@@ -215,6 +217,13 @@ bool RfLinkFieldIsHexInteger(char *buffer) {
 }
 
 /**
+ * check if a given field name is used for decimal integer (thus need to be converted to dec)
+ */
+bool RfLinkFieldIsDecInteger(char *buffer) {
+        return RfLinkIsStringInArray(buffer, RFLINK_FIELD_DECINT);
+}
+
+/**
  * check if a given field name needs to be converted to float divided by 10 and possibly negative
  */
 bool RfLinkFieldIsHexFloat10Neg(char *buffer) {
@@ -271,7 +280,16 @@ void RfLinkFieldAddHexFloat10Value(char *buffer) {
  * put the value as an integer in the JSON buffer
  * eg: 0x57 will become 87
  */
-void RfLinkFieldAddIntegerValue(char *buffer) {
+void RfLinkFieldAddHexIntegerValue(char *buffer) {
         char s[21];
         strcat(JSON, ultoa(strtoul(buffer,NULL,16),s,10));
+}
+
+/**
+ * put the value as an integer in the JSON buffer
+ * eg: 07 will become 7
+ */
+void RfLinkFieldAddDecIntegerValue(char *buffer) {
+        char s[21];
+        strcat(JSON, ultoa(strtoul(buffer,NULL,10),s,10));
 }

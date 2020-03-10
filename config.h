@@ -7,16 +7,17 @@
 #include <ArduinoOTA.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
+#include <EEPROM.h>
 
 /*********************************************************************************
  * Serial and hardware configuration
 /*********************************************************************************/
 
-SoftwareSerial softSerial(4, 2, false,BUFFER_SIZE+2); // software serial RX from GPIO4/D2 pin (unused pin on ESP01), software serial TX to RFLink on GPIO2/D4 pin - uncomment to use software serial
+//SoftwareSerial softSerial(4, 2, false,BUFFER_SIZE+2); // software serial RX from GPIO4/D2 pin (unused pin on ESP01), software serial TX to RFLink on GPIO2/D4 pin - uncomment to use software serial
 auto& debugSerialTX = Serial;                         // debugSerialTX is to show information for debugging - use Serial to write on hardware serial (ESP TX pin) 
 auto& rflinkSerialRX = Serial;                        // rflinkSerialRX is used for data from RFLink - uncomment this line to listen on hardware serial (ESP RX pin)
-//auto& rflinkSerialTX = Serial;                      // rflinkSerialTX is used for data to RFLink - uncomment this line and comment following one to write on hardware serial (ESP TX pin)
-SoftwareSerial& rflinkSerialTX = softSerial;          // rflinkSerialTX is used for data to RFLink - uncomment this line and comment previous one to write on software serial (GPIO2/D4)
+auto& rflinkSerialTX = Serial;                      // rflinkSerialTX is used for data to RFLink - uncomment this line and comment following one to write on hardware serial (ESP TX pin)
+//SoftwareSerial& rflinkSerialTX = softSerial;          // rflinkSerialTX is used for data to RFLink - uncomment this line and comment previous one to write on software serial (GPIO2/D4)
 
 #define MEGA_RESET_PIN 0                      // ESP pin connected to MEGA reset pin - GPIO0 = D3
 //#define SERIAL_DEBUG                        // uncomment to enable debug on debugSerialTX
@@ -28,7 +29,7 @@ SoftwareSerial& rflinkSerialTX = softSerial;          // rflinkSerialTX is used 
 #define WIFI_SSID "XXXXXX"                    // Wi-Fi network SSID for ESP8266 to connect to
 #define WIFI_PASSWORD "XXXXXX"                // Wi-Fi password for the network above
 
-#define MQTT_SERVER "192.168.1.201"             // MQTT Server
+#define MQTT_SERVER "192.168.1.10"             // MQTT Server
 #define MQTT_PORT 1883                          // MQTT server port
 #define MQTT_USER ""                            // MQTT Server user
 #define MQTT_PASSWORD ""                        // MQTT Server password
@@ -54,12 +55,16 @@ SoftwareSerial& rflinkSerialTX = softSerial;          // rflinkSerialTX is used 
  * Parameters for IDs filtering - this is used to publish on MQTT server only some IDs
 /*********************************************************************************/
 
-#define USER_ID_NUMBER 0       // *MUST* be equal to USER_IDs number of lines (following table) OR set to 0 to publish all IDs with no condition
+#define VERSION 20200310 // ! => Changing this number will overwrite the configuration in eeprom memory and use USER_ID_STRUCT defined below.
 
-const USER_ID_STRUCT USER_IDs[] = {    // Configure IDs that will be forwarded to MQTT server, interval time to force publish if data did not change (in ms), and description
-  { "1082"    , 30 * 1000 * 60 , "Auriol V3 - Thermom&egrave;tre piscine (ID forc&eacute;e)"  },
-  { "0210"    , 30 * 1000 * 60 , "Alecto V5 - Pluviom&egrave;tre (ID forc&eacute;e)"  },  
-  { "2A1C"    , 30 * 1000 * 60 , "Oregon Rain2 - Pluie"                                       },
+#define USER_ID_NUMBER 0       // ***MUST*** be inferior to USER_IDs number of lines (following table) OR set to 0 to publish all IDs with no condition
+
+const USER_ID_STRUCT USER_IDs[] = {    // Configure IDs that will be forwarded to MQTT server. Second column is ID used for MQTT topic. Third column is interval time to force publication if data did not change (in ms). Last column is a description.
+  {"1082","1082",1800000,"Auriol V3"}, //1
+  {"0210","0210",1800000,"Alecto V5"}, //2
+  {"2A04","2A1C",1800000,"Oregon Rain2"}, //3
+  {"00000","00000",1000,"-"}, //4
+  {"00000","00000",1000,"-"}, //5
 };
 
 const USER_SPECIFIC_ID_STRUCT USER_SPECIFIC_IDs[] = {    // This is used to force a specific ID for devices changing frequently ; it applies to a specific name/protocol, which means there should be only one device using this protocol
