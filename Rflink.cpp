@@ -17,7 +17,7 @@ void readRfLinkPacket(char* line) {
 
         // check len and ignore bad packet (broken serial, etc.)
         if(strlen(line) < RFLINK_PACKET_MIN_SIZE) return;
-
+        
         // get name : 3rd field (begins at char 6)
         while(line[i] != ';' && i < BUFFER_SIZE && j < MAX_DATA_LEN) {
                 if      (line[i]==' ') MQTT_NAME[j] = '_';
@@ -94,7 +94,7 @@ void readRfLinkPacket(char* line) {
         j=0;
         i+=4; // skip ";MQTT_ID="
 
-        while(line[i] != ';' && i < BUFFER_SIZE && j < MAX_DATA_LEN) {
+        while(line[i] != ';' && i < BUFFER_SIZE && j < MAX_ID_LEN) {
                 MQTT_ID[j++] = line[i++];
         }
         MQTT_ID[j] = '\0';
@@ -116,7 +116,7 @@ void readRfLinkFields(char* fields, int start){
         JSON[0]='{';
         JSON[1]='\0';
 
-        char SWITCH_NUMBER[MAX_DATA_LEN]; // XXX used to store number in case of SWITCH name
+        char SWITCH_NUMBER[MAX_ID_LEN]; // XXX used to store number in case of SWITCH name
         bool after_SWITCH = 0;
         bool is_SWITCH_CMD = 0;
         

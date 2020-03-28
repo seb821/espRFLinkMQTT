@@ -2,6 +2,7 @@
 #define H_RFLINK
 
 #define BUFFER_SIZE 200                         // Maximum size of one serial line and json content
+#define MAX_ID_LEN 12                         	// Maximum size for record name, record id, json field name and json field value
 #define MAX_DATA_LEN 24                         // Maximum size for record name, record id, json field name and json field value
 #define MAX_TOPIC_LEN 60                        // Maximum topic path size (at least lenght of MQTT_PUBLISH_TOPIC + 2 x MAX_DATA_LEN)
 
@@ -29,7 +30,7 @@ extern char JSON   [BUFFER_SIZE];
 
 // message builder buffers
 extern char MQTT_NAME[MAX_DATA_LEN];
-extern char MQTT_ID  [MAX_DATA_LEN];
+extern char MQTT_ID  [MAX_ID_LEN];
 extern char FIELD_BUF[MAX_DATA_LEN];
 
 
