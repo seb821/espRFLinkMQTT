@@ -1,6 +1,6 @@
-/*********************************************************************************
- * RFLink parser functions
-/*********************************************************************************/
+//********************************************************************************
+// RFLink parser functions
+//********************************************************************************
 #include "Rflink.h"
 
 /**
@@ -17,7 +17,14 @@ void readRfLinkPacket(char* line) {
 
         // check len and ignore bad packet (broken serial, etc.)
         if(strlen(line) < RFLINK_PACKET_MIN_SIZE) return;
-        
+		
+		#ifdef EXPERIMENTAL
+			// get line number TEST
+			LINE_NUMBER[0] = line[3];
+			LINE_NUMBER[1] = line[4];
+			LINE_NUMBER[2] = '\0';
+        #endif
+		
         // get name : 3rd field (begins at char 6)
         while(line[i] != ';' && i < BUFFER_SIZE && j < MAX_DATA_LEN) {
                 if      (line[i]==' ') MQTT_NAME[j] = '_';
@@ -253,7 +260,7 @@ void RfLinkFieldAddQuotedValue(char *buffer) {
  * eg : 0x8066 will become -10.2
  */
 void RfLinkFieldAddHexFloat10NegValue(char *buffer) {                  	// for TMP, WINCHL and WINTMP
-        char strfloat[10];
+        char strfloat[11];
         if (buffer[0] == 56) {                                          // if first char is a 8 (code ascii 56), it is a negative temp
           buffer[0] = 48;                                               // replace char 8 by char 0 (code ascii 48)
           dtostrf(strtoul(buffer,NULL,16)*0.1*-1, 2, 1, strfloat);      // convert to hex, divide by 10 and multiply by minus 1
@@ -269,7 +276,7 @@ void RfLinkFieldAddHexFloat10NegValue(char *buffer) {                  	// for T
  * eg : 0x00c3 which is 216 (dec) will become 21.6
  */
 void RfLinkFieldAddHexFloat10Value(char *buffer) {
-        char strfloat[10];
+        char strfloat[11];
         dtostrf(strtoul(buffer,NULL,16)*0.1, 2, 1, strfloat);
         strfloat[10]='\0';
         strcat(JSON,strfloat);
