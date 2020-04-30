@@ -12,8 +12,6 @@ WiFiClient wifiClient;
 
 PubSubClient MQTTClient;
 
-//PubSubClient MQTTClient(eepromConfig.mqtt.server, eepromConfig.mqtt.port, callback, wifiClient);
-
 ESP8266WebServer httpserver(80);                               // Create a webserver object that listens for HTTP request on port 80
 
 ESP8266HTTPUpdateServer httpUpdater;                           // Firmware webupdate
@@ -67,6 +65,9 @@ void showEEPROM() {
 		DEBUG_PRINT(" \t| port: ");DEBUG_PRINTLN(eepromConfig.mqtt.port);
 		DEBUG_PRINT(" \t| user: ");DEBUG_PRINTLN(eepromConfig.mqtt.user);
 		DEBUG_PRINT(" \t| password: ");DEBUG_PRINTLN(eepromConfig.mqtt.password);
+		DEBUG_PRINTLN(" - MEGA");
+		DEBUG_PRINT(" \t| mega reset pin: ");DEBUG_PRINTLN(eepromConfig.mega_reset_pin);
+		DEBUG_PRINT(" \t| auto reset interval: ");DEBUG_PRINTLN(eepromConfig.resetMegaInterval);
 		DEBUG_PRINT(" - ID filtering: ");DEBUG_PRINTLN((eepromConfig.id_filtering)?"enabled":"disabled");
 		for (int i =0; i < FILTERED_ID_SIZE; i++) {
 			DEBUG_PRINT(" \t| ");DEBUG_PRINT(eepromConfig.filtered_id[i].id);
@@ -75,6 +76,7 @@ void showEEPROM() {
 			DEBUG_PRINT(" \t\t- ");DEBUG_PRINT(eepromConfig.filtered_id[i].description);
 			DEBUG_PRINTLN();
 		}
+		DEBUG_PRINT(" - Settings locked ");DEBUG_PRINTLN(eepromConfig.settings_locked);
 		DEBUG_PRINT(" - Version ");DEBUG_PRINTLN(eepromConfig.version);
 };
 
@@ -109,6 +111,16 @@ void checkEEPROM() {
 			strcpy(eepromConfig.filtered_id[i].description,filtered_IDs[i].description);
 		}
 		
+		// Mega reset settings from config.h
+		eepromConfig.mega_reset_pin = DEFAULT_MEGA_RESET_PIN;
+		
+		// Auto reset MEGA interval from config.h
+		eepromConfig.resetMegaInterval = DEFAULT_MEGA_AUTO_RESET_INTERVAL;
+		
+		// Revert to unlocked settings
+		eepromConfig.settings_locked = 0;
+		
+		
 		// Save EEPROM
 		saveEEPROM();
 		loadEEPROM();
@@ -123,12 +135,15 @@ void setup_simple_wifi() {
 	DEBUG_PRINT("Starting WiFi, connecting to '");
 	DEBUG_PRINT(eepromConfig.ssid); DEBUG_PRINTLN("' ...");
 	WiFi.hostname(HOSTNAME);
+	WiFi.persistent(false);
 	WiFi.mode(WIFI_STA); 											// Act as wifi_client only, defaults to act as both a wifi_client and an access-point.
 	WiFi.begin(eepromConfig.ssid,eepromConfig.psk);					// Connect to the network
 	int i = 0;
 	while (WiFi.status() != WL_CONNECTED) {							// Wait for the Wi-Fi to connect
-	  delay(1000); i++;
-	  DEBUG_PRINT(i); DEBUG_PRINT(' ');
+		delay(1000); i++;
+		DEBUG_PRINT(i); DEBUG_PRINT(' ');
+		if (i%10 == 0) {DEBUG_PRINTLN()}; // every 10 seconds
+		yield();
 	};
 	DEBUG_PRINTLN();
 	DEBUG_PRINTLN("WiFi connected to " + WiFi.SSID() + ", IP address:\t" + WiFi.localIP().toString());
@@ -141,6 +156,7 @@ void setup_simple_wifi() {
 		DEBUG_PRINT("Starting complex WiFi, connecting to '");
 		DEBUG_PRINT(eepromConfig.ssid); DEBUG_PRINTLN("' ...");
 		WiFi.hostname(HOSTNAME);
+		WiFi.persistent(false);
 		WiFi.mode(WIFI_STA); 										// Act as wifi_client only
 		WiFi.begin(eepromConfig.ssid,eepromConfig.psk);				// Connect to the network
 		int i = (int) (WIFI_CONNECT_TIMEOUT/1000);
@@ -148,8 +164,10 @@ void setup_simple_wifi() {
 		// Wait for the Wi-Fi to connect or timeout is reached
 		while ( (WiFi.status() != WL_CONNECTED) && ( (millis() - startedAt) < WIFI_CONNECT_TIMEOUT ) )
 			{
-			delay(1000);
 			DEBUG_PRINT(i); DEBUG_PRINT(' ');i--;
+			delay(1000);
+			if (i%10 == 0) {DEBUG_PRINTLN()}; // every 10 seconds
+			yield();
 			}
 		DEBUG_PRINTLN();
 		
@@ -159,6 +177,7 @@ void setup_simple_wifi() {
 		} else {													// WiFi connection timeout reached, starting AP
 
 			DEBUG_PRINTLN("WiFi connection failed within " + String((int)(WIFI_CONNECT_TIMEOUT/1000)) + " seconds: starting AP during " + String(WIFI_AP_TIMEOUT/60000) + " minutes." );
+			//WiFi.disconnect();
 			WiFi.softAP(eepromConfig.hostname);
 			WiFi.mode(WIFI_AP);
 			DEBUG_PRINTLN("Access Point started with WiFi name " + String(eepromConfig.hostname) + ", IP address:\t" + WiFi.softAPIP().toString());
@@ -172,10 +191,12 @@ void setup_simple_wifi() {
 			int i = (int) (WIFI_AP_TIMEOUT/1000);
 			bool unique = 0;
 			while ( ( (millis() - startedAt) < WIFI_AP_TIMEOUT ) ) {
-				if (millis()%1000 == 0) { // every second
+				now = millis();
+				if (now%1000 == 0) { // every second
 					if (unique == 0) {
 						DEBUG_PRINT(i); DEBUG_PRINT(' ');i--;
 						unique = 1;
+						if (i%10 == 0) {DEBUG_PRINTLN()}; // every 10 seconds
 					}
 				} else {
 					unique = 0;
@@ -375,10 +396,6 @@ void ConfigHTTPserver() {
 		htmlMessage += "for (i = (7-1); i> 0; i--) {\r\n";
 		htmlMessage += "document.getElementById('data'+i).innerHTML = document.getElementById('data'+(i-1)).innerHTML;\r\n";
 		htmlMessage += "}";
-		/*
-		for (int i = (7 - 1); i > 0; i--){
-			htmlMessage += "document.getElementById(\"data" + String(i) + "\").innerHTML = document.getElementById(\"data" + String (i-1) + "\").innerHTML;\r\n";
-		}*/
 		htmlMessage += "}\r\n";
 		htmlMessage += "document.getElementById(\"data0\").innerHTML = this.responseText;\r\n";
 		htmlMessage += "memorized_data = this.responseText;\r\n"; // memorize new data
@@ -390,11 +407,11 @@ void ConfigHTTPserver() {
 		htmlMessage += " x = setInterval(function() {loadData(\"/data.txt\",updateData)}, 500);\r\n";       // update every 500 ms
 		htmlMessage += "}\r\n";
 		htmlMessage += "</script>\r\n";
-		htmlMessage += "<div class='note'>* see Live Data tab for more lines - web view may not catch all frames, MQTT debug is more accurate</div>\r\n";
+		htmlMessage += "<div class='note'>* See \"Live Data\" tab for more lines. Please note that web view consumes ressources and some frames may be missed. MQTT debug is more accurate.</div>\r\n";
 		// Commands to RFLink
 		htmlMessage += "<h3>Commands to RFLink</h3><br />";
 		htmlMessage += "<form action=\"/send\" id=\"form_command\" style=\"float: left;\"><input type=\"text\" size=\"32\" id=\"command\" name=\"command\">";
-		htmlMessage += "<input type=\"submit\" value=\"Send\"><a class='button help' href='http://www.rflink.nl/blog2/protref' target='_blank'>&#10068;</a></form>\r\n";
+		htmlMessage += "<input type=\"submit\" value=\"Send\"><a class='button help' href='http://www.rflink.nl/blog2/protref' target='_blank'>&#8505;</a></form>\r\n";
 		htmlMessage += "<script>function sF(cmd) {"
 			"document.getElementById('command').value = cmd;"
 			"var url = '/send';"
@@ -457,13 +474,14 @@ void ConfigHTTPserver() {
 				#endif
 			}
 			htmlMessage += "</table>\r\n";
-			htmlMessage += "<div class='note'>* only the above IDs are published on MQTT server, and if data changed or interval time was exceeded</div><br>\r\n";
-			htmlMessage += "<a href='/disable-id_filtering' class='button link'>Disable ID filtering</a> \r\n";
-			htmlMessage += "<a class='button link' href='/configuration'>Configure ID filtering</a>\r\n";
+			htmlMessage += "<div class='note'>* Only the above IDs are published on MQTT server, and if data changed or interval time was exceeded.</div><br>\r\n";
+			//htmlMessage += "<a href='/disable-id_filtering' class='button link'>&#10060; Disable ID filtering</a> \r\n";
+			htmlMessage += "<a class='button link' href='/configuration'>&#9881;&nbsp;Configure&nbsp;ID&nbsp;filtering</a>\r\n";
 			
 		} else {
 			htmlMessage += "<h3 id='configuration'>No ID filtering *</h3>\r\n";
-			htmlMessage += "<div class='note'>* all received messages are forwarded to MQTT server</div><br><a href='/enable-id_filtering' class='button link' style='font-weight:normal'>Enable ID filtering</a>\r\n";
+			htmlMessage += "<div class='note'>* All received messages are forwarded to MQTT server ; see System tab to enable ID filtering.</div>\r\n";
+			//<br><a href='/enable-id_filtering' class='button link' style='font-weight:normal'>Enable ID filtering</a>
 		}
 		htmlMessage += "<br>\r\n";
 		
@@ -500,6 +518,7 @@ void ConfigHTTPserver() {
 		htmlMessage += "<tr class=\"header\"><th class='t-left'> <a onclick='sortTable(0)'>Time</a></th><th class='t-left'> <a onclick='sortTable(1)'>Raw Data</a> </th><th class='t-left'> <a onclick='sortTable(2)'>MQTT Topic</a> </th><th class='t-left'> <a onclick='sortTable(3)'>MQTT JSON</a> </th></tr>\r\n";
 		htmlMessage += "<tr id=\"data0" "\"><td></td><td></td><td></td><td></td></tr>\r\n";
 		htmlMessage += "</table>\r\n";
+		htmlMessage += "<div class='note'>* Please note that web view consumes ressources and some frames may be missed. MQTT debug is more accurate</div>\r\n";
 		htmlMessage += "<script>\r\n";                                                      	// Script to filter lines
 		htmlMessage += "function filterLines() {\r\n";
 		htmlMessage += "  var input, filter, table, tr, td, i;\r\n";
@@ -612,11 +631,11 @@ void ConfigHTTPserver() {
 			MQTTClient.publish(MQTT_MEGA_RESET_TOPIC,"0",MQTT_RETAIN_FLAG);
 		#endif
 		delay(200);
-		pinMode(MEGA_RESET_PIN, OUTPUT);
+		pinMode(eepromConfig.mega_reset_pin, OUTPUT);
 		delay(200);
-		digitalWrite(MEGA_RESET_PIN,false);                         // Change the state of pin to ground
+		digitalWrite(eepromConfig.mega_reset_pin,false);                         // Change the state of pin to ground
 		delay(1000); 
-		digitalWrite(MEGA_RESET_PIN,true);                          // Change the state of pin to VCC
+		digitalWrite(eepromConfig.mega_reset_pin,true);                          // Change the state of pin to VCC
 		delay(50);
 	});
 
@@ -664,17 +683,32 @@ void ConfigHTTPserver() {
 		DEBUG_PRINTLN("Enabling ID filtering...");
 		eepromConfig.id_filtering = 1;
 		saveEEPROM();
-		httpserver.sendHeader("Location","/#filtered_ids");
+		httpserver.sendHeader("Location","infos");
 		httpserver.send(303);
 	});
 	httpserver.on("/disable-id_filtering",[](){
 		DEBUG_PRINTLN("Disabling ID filtering...");
 		eepromConfig.id_filtering = 0;
 		saveEEPROM();
-		httpserver.sendHeader("Location","/#filtered_ids");
+		httpserver.sendHeader("Location","/infos");
 		httpserver.send(303);
 		});
 
+	httpserver.on("/lock-settings",[](){
+		DEBUG_PRINTLN("Enabling ID filtering...");
+		eepromConfig.settings_locked = 1;
+		saveEEPROM();
+		httpserver.sendHeader("Location","/infos");
+		httpserver.send(303);
+	});
+	httpserver.on("/unlock-settings",[](){
+		DEBUG_PRINTLN("Disabling ID filtering...");
+		eepromConfig.settings_locked = 0;
+		saveEEPROM();
+		httpserver.sendHeader("Location","/infos");
+		httpserver.send(303);
+		});
+		
 	httpserver.on("/data.txt", [](){			// Used to deliver raw data received (BUFFER) and mqtt data published (MQTT_TOPIC and JSON)           
 		httpserver.send(200, "text/html","<td>" + String(BUFFER) + "</td><td>" + String(MQTT_TOPIC) + "</td><td>" + String(JSON) + "</td>\r\n");
 	});
@@ -706,91 +740,155 @@ void ConfigHTTPserver() {
 		htmlMessage += "document.getElementById('menuinfos').classList.add('active');</script>";
 
 		// System Info
-		htmlMessage += "<h3>System Info</h3>\r\n";
+		htmlMessage += "<h3>System Info and Settings</h3>\r\n";
 		htmlMessage += "<table class='normal'>\r\n";
 		htmlMessage += "<tr><td>Uptime</td><td>" + String(time_string_exp(millis())) + "</td></tr>\r\n";
-		/*htmlMessage += "<script>"
-			"function httpGetwifiscan() {"
-			"const Http = new XMLHttpRequest();"
-			"const url='/wifi-scan';"
-			"Http.open(\"GET\", url);"
-			"Http.send();"
-			"Http.onreadystatechange = (e) => {"
-			"	document.getElementById(\"wifiscan\").innerHTML = Http.responseText;"
-			"}"
-			"}"
-			"</script>\r\n";*/
-		htmlMessage += "<tr><td>WiFi network</td><td>" + String(WiFi.SSID()) + " " + WiFi.RSSI() + " dBm | <a href='/wifi-scan' class='button link' onclick=\"fetchAndNotify('/wifi-scan');return false;\">Scan</a>";
+		htmlMessage += "<tr><td>WiFi network</td><td><table class='condensed'><tr><td>" + String(WiFi.SSID()) + " " + WiFi.RSSI() + " dBm | <a href='/wifi-scan' class='button link' onclick=\"fetchAndNotify('/wifi-scan');return false;\">&#128246;&nbsp;Scan</a></td></tr></table>";
 		#ifdef ENABLE_WIFI_SETTINGS_ONLINE_CHANGE
-			//htmlMessage += " | <a class='button link' href='#' onclick=\"document.getElementById('wificonfigure').style.display = 'block';return false;\">Configure</a>";
+		if (!eepromConfig.settings_locked) {
 			htmlMessage += "<form method='post' action='/update-settings'><table class='condensed'id='wificonfigure'><input type='hidden' name='save_wifi' value='1'>\r\n";
 			htmlMessage += "<tr><td>ssid</td><td><input type='text' name='ssid' maxlength='" + String(CFG_SSID_SIZE) + "' value='" + String(eepromConfig.ssid) + "'></td></tr>\r\n";
 			htmlMessage += "<tr><td>password</td><td><input type='password' name='psk' maxlength='" + String(CFG_PSK_SIZE) + "' value='" + String(eepromConfig.psk) + "'></td></tr>\r\n";
 			htmlMessage += "<tr><td>hostname</td><td><input type='text' name='hostname' maxlength='" + String(CFG_HOSTNAME_SIZE) + "' value='" + String(eepromConfig.hostname) + "'></td></tr>\r\n";
 			htmlMessage += "<tr><td></td><td><input type='submit' value='Apply'>*reboot required</td></tr></table></form>\r\n";
+		} else {
+			htmlMessage += "<table class='condensed'id='wificonfigure'>\r\n";
+			htmlMessage += "<tr><td>ssid</td><td>" + String(eepromConfig.ssid) + "</td></tr>\r\n";
+			htmlMessage += "<tr><td>password</td><td>" + String((strcmp(eepromConfig.psk,"")==0)? "" : "*****") + "</td></tr>\r\n";
+			htmlMessage += "<tr><td>hostname</td><td>"+ String(eepromConfig.hostname) + "</td></tr>\r\n";
+			htmlMessage += "</table>\r\n";	
+		}
 		#endif
-		//htmlMessage += "<div style='margin-top:0.25em;'id='wifiscan'></div>\r\n";
 		htmlMessage += "\r\n</td></tr>\r\n";
 		htmlMessage += "<tr><td>IP address (MAC)</td><td>" + WiFi.localIP().toString() +" (" + String(WiFi.macAddress()) +")</td></tr>\r\n";
-		htmlMessage += "<tr><td>ESP pin to reset MEGA</td><td>GPIO " + String(MEGA_RESET_PIN);
-		if (resetMegaInterval > 0) {
-			htmlMessage += " - auto reset after " + String( int(float(resetMegaInterval) *0.001 /60)) + " min if no data received - last data " + time_string_exp(now - lastReceived) + " ago";// - " + resetMegaCounter + " resets since ESP reboot";
-		}
-		htmlMessage += "</td></tr>";
+
 		#ifdef ENABLE_MQTT_SETTINGS_ONLINE_CHANGE
-			htmlMessage += "<tr><td>MQTT configuration</td><td><form method='post' action='/update-settings'><table class='condensed'><input type='hidden' name='save_mqtt' value='1'>\r\n";
-			htmlMessage += "<tr><td>server*</td><td><input type='text' name='mqtt_server' maxlength='" + String(CFG_MQTT_SERVER_SIZE) + "' value='" + String(eepromConfig.mqtt.server) + "'></td></tr>\r\n";
-			htmlMessage += "<tr><td>port*</td><td><input type='number' style='width: 8em' name='mqtt_port' value='" + String(eepromConfig.mqtt.port) + "'></td></tr>\r\n";
-			htmlMessage += "<tr><td>user</td><td><input type='text' name='mqtt_user' maxlength='" + String(CFG_MQTT_USER_SIZE) + "' value='" + String(eepromConfig.mqtt.user) + "'></td></tr>\r\n";
-			htmlMessage += "<tr><td>password</td><td><input type='password' name='mqtt_password' maxlength='" + String(CFG_MQTT_PASSWORD_SIZE) + "' value='" + String(eepromConfig.mqtt.password) + "'></td></tr>\r\n";
-			htmlMessage += "<tr><td></td><td><input type='submit' value='Apply'>*reboot required</td></tr></table></form></td></tr>\r\n";
+			htmlMessage += "<tr><td>MQTT configuration</td><td>";
+			if (!eepromConfig.settings_locked) {
+				htmlMessage += "<form method='post' action='/update-settings' style='display:inline'><table class='condensed' ><input type='hidden' name='save_mqtt' value='1'>\r\n";
+				htmlMessage += "<tr><td>server</td><td><input type='text' name='mqtt_server' maxlength='" + String(CFG_MQTT_SERVER_SIZE) + "' value='" + String(eepromConfig.mqtt.server) + "'></td></tr>\r\n";
+				htmlMessage += "<tr><td>port</td><td><input type='number' style='width: 8em' name='mqtt_port' value='" + String(eepromConfig.mqtt.port) + "'></td></tr>\r\n";
+				htmlMessage += "<tr><td>user</td><td><input type='text' name='mqtt_user' maxlength='" + String(CFG_MQTT_USER_SIZE) + "' value='" + String(eepromConfig.mqtt.user) + "'></td></tr>\r\n";
+				htmlMessage += "<tr><td>password</td><td><input type='password' name='mqtt_password' maxlength='" + String(CFG_MQTT_PASSWORD_SIZE) + "' value='" + String(eepromConfig.mqtt.password) + "'></td></tr>\r\n";
+				htmlMessage += "<tr><td></td><td><input type='submit' value='Apply'>*reboot required</td></tr></table></form>";
+			} else {
+				htmlMessage += "<table class='condensed' >\r\n";
+				htmlMessage += "<tr><td>server</td><td>" + String(eepromConfig.mqtt.server) + "</td></tr>\r\n";
+				htmlMessage += "<tr><td>port</td><td>" + String(eepromConfig.mqtt.port) + "</td></tr>\r\n";
+				htmlMessage += "<tr><td>user</td><td>" + String(eepromConfig.mqtt.user) + "</td></tr>\r\n";
+				htmlMessage += "<tr><td>password</td><td>" + String((strcmp(eepromConfig.mqtt.password,"")==0)? "" : "*****") + "</td></tr>\r\n";
+				htmlMessage += "</table>";
+			}
+			htmlMessage += "</td></tr>\r\n";
 		#else
-			htmlMessage += "<tr><td>MQTT server and port</td><td>" + String(eepromConfig.mqtt.server) + ":" + String(eepromConfig.mqtt.port)+"</td></tr>\r\n";
+			htmlMessage += "<tr><td>MQTT server:port user</td><td>" + String(eepromConfig.mqtt.server) + ":" + String(eepromConfig.mqtt.port)+" " + String(eepromConfig.mqtt.user)+"</td></tr>\r\n";
 		#endif
-		htmlMessage += "<tr><td>MQTT connection state</td><td>" + String(MQTTClient.state()) + " <a class='button help' href='https://pubsubclient.knolleary.net/api.html#state' target='_blank'>&#10068;</a></td></tr>\r\n";
+		htmlMessage += "<tr><td>MQTT connection state</td><td>" + String(MQTTClient.state()) + " <a class='button help' href='https://pubsubclient.knolleary.net/api.html#state' target='_blank'>&#8505;</a></td></tr>\r\n";
 		htmlMessage += "<tr><td>MQTT connection attempts</td><td>" + String (mqttConnectionAttempts) + " since last reboot</td></tr>\r\n";
-		htmlMessage += "<tr><td>MQTT debug</td><td>";
-		(MQTT_DEBUG)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span> | <a href='/disable-debug' class='button link'>Disable</a>" : htmlMessage += "disabled | <a href='/enable-debug' class='button link'>Enable</a>";
+		// MQTT debug
+		htmlMessage += "<tr><td>Debug data on MQTT</td><td>";
+		if (!eepromConfig.settings_locked) {
+			(MQTT_DEBUG)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span> | <a href='/disable-debug' class='button link'>&#10060;&nbsp;Disable&nbsp;MQTT&nbsp;debug</a>" : htmlMessage += "disabled | <a href='/enable-debug' class='button link'>&#128172;&nbsp;Enable&nbsp;MQTT&nbsp;debug</a>";
+		} else {
+			(MQTT_DEBUG)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span>" : htmlMessage += "disabled";	
+		}
 		htmlMessage += "</td></tr>\r\n";
-		htmlMessage += "<tr><td>MQTT retain</td><td>" + String((MQTT_RETAIN_FLAG)? "true" : "false") + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>MQTT topics</td><td><table class='condensed'>\r\n";
 		htmlMessage += "<tr><td>publish (json)</td><td> " + String(MQTT_PUBLISH_TOPIC) + "/Protocol_Name-ID</td></tr>\r\n";
 		htmlMessage += "<tr><td>commands to rflink</td><td> " + String(MQTT_RFLINK_CMD_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>last will ( " + String(MQTT_WILL_ONLINE) + " / " + String(MQTT_WILL_OFFLINE) + " )</td><td> " + String(MQTT_WILL_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>uptime (min, every " + String( int( float(UPTIME_INTERVAL) *0.001 / 60) ) + ")</td><td> " + String(MQTT_UPTIME_TOPIC) + "</td></tr>\r\n";
+		htmlMessage += "<tr><td>rssi (dBm)</td><td> " + String(MQTT_RSSI_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>debug (data from rflink)</td><td> " + String(MQTT_DEBUG_TOPIC) + "</td></tr>\r\n";
-		if (resetMegaInterval > 0) {
-			htmlMessage += "<tr><td>mega reset information</td><td> " + String(MQTT_MEGA_RESET_TOPIC) + "</td></tr>\r\n";
-		}
+		htmlMessage += "<tr><td>mega reset pulse</td><td> " + String(MQTT_MEGA_RESET_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "</table></td></tr>\r\n";
+		htmlMessage += "<tr><td>MQTT retain flag</td><td>" + String((MQTT_RETAIN_FLAG)? "true" : "false") + "</td></tr>\r\n";
+		// Mega Reset
+		htmlMessage += "<tr><td>ESP pin to reset MEGA</td><td>";
+		if (!eepromConfig.settings_locked) {
+			htmlMessage += "<form method='post' action='/update-settings' style='display:inline'>";
+			htmlMessage += "<input type='hidden' name='save_mega_reset_pin' value='1'>";
+			htmlMessage += "<select class='' name='mega_reset_pin' onchange='this.form.submit()'>";
+			htmlMessage += "<option value=-1 " + String((eepromConfig.mega_reset_pin == -1)?"selected":"") + ">- None -</option>";
+			htmlMessage += "<option value=0 " + String((eepromConfig.mega_reset_pin == 0)?"selected":"") + ">GPIO-0 (D3) &#9888;</option>";
+			htmlMessage += "<option value=1 disabled>GPIO-1 (D10) TX0</option>";
+			htmlMessage += "<option value=2 " + String((eepromConfig.mega_reset_pin == 2)?"selected":"") + ">GPIO-2 (D4) &#9888;</option>";
+			htmlMessage += "<option value=3 disabled>GPIO-3 (D9) RX0</option>";
+			htmlMessage += "<option value=4 " + String((eepromConfig.mega_reset_pin == 4)?"selected":"") + ">GPIO-4 (D2)</option>";
+			htmlMessage += "<option value=5 " + String((eepromConfig.mega_reset_pin == 5)?"selected":"") + ">GPIO-5 (D1)</option>";
+			htmlMessage += "<option value=9 " + String((eepromConfig.mega_reset_pin == 9)?"selected":"") + ">GPIO-9 (D11) &#9888;</option>";
+			htmlMessage += "<option value=10 " + String((eepromConfig.mega_reset_pin == 10)?"selected":"") + ">GPIO-10 (D12) &#9888;</option>";
+			htmlMessage += "<option value=12 " + String((eepromConfig.mega_reset_pin == 12)?"selected":"") + ">GPIO-12 (D6)</option>";
+			htmlMessage += "<option value=13 " + String((eepromConfig.mega_reset_pin == 13)?"selected":"") + ">GPIO-13 (D7)</option>";
+			htmlMessage += "<option value=14 " + String((eepromConfig.mega_reset_pin == 14)?"selected":"") + ">GPIO-14 (D5)</option>";
+			htmlMessage += "<option value=15 " + String((eepromConfig.mega_reset_pin == 15)?"selected":"") + ">GPIO-15 (D8) &#9888;</option>";
+			htmlMessage += "<option value=16 " + String((eepromConfig.mega_reset_pin == 16)?"selected":"") + ">GPIO-16 (D0)</option>";
+			htmlMessage += "</select> <a class='button help' href='https://espeasy.readthedocs.io/en/latest/Reference/GPIO.html' target='_blank'>&#8505;</a>";
+			htmlMessage += "<noscript><input type='submit' value='Submit'></noscript></form>";
+		} else {
+			if (eepromConfig.mega_reset_pin == -1) {
+				htmlMessage += "disabled";
+			} else {
+				htmlMessage += "GPIO " + String(eepromConfig.mega_reset_pin);
+			}
+		}
+		htmlMessage += "</td></tr>";
+		if (eepromConfig.mega_reset_pin != -1) {
+			htmlMessage += "<tr><td>Auto Reset MEGA interval</td><td>";
+			if (!eepromConfig.settings_locked) {
+				htmlMessage += "<form method='post' action='/update-settings' style='display:inline'><input type='number' style='width: 6em' name='resetMegaInterval' min='0' value='" + String((int) (eepromConfig.resetMegaInterval/1000)) + "'> seconds <input type='submit' value='Apply'><input type='hidden' name='save_auto_reset_mega_interval' value='1'></form>";
+			} else {
+				htmlMessage += String((int) (eepromConfig.resetMegaInterval/1000)) + " seconds";
+			}
+			htmlMessage += " | last data " + String((int) (now - lastReceived)/1000/60) + "min ago</td></tr>";
+			htmlMessage += "<tr><td></td><td><div class='note'>Note: automatically reset MEGA if no data is received during this time ; 0 to disable</div>";
+			htmlMessage += "</td></tr>";
+		}
+		// User specific
 		for (int i = 0; i < (int) (sizeof(user_specific_ids) / sizeof(user_specific_ids[0])); i++){      // User specific IDs defined in user_specific_ids
 			  htmlMessage += "<tr><td>User specific</td><td>ID for protocol " + String(user_specific_ids[i][0]) + " is forced to " + String(user_specific_ids[i][2]) + "; applies to ID: " + String(user_specific_ids[i][1]) +"</td></tr>\r\n";
 		}
-		//register uint32_t *sp asm("a1");
-		//htmlMessage += "<tr><td>Free Stack</td><td>" +  String(4 * (sp - g_pcont->stack) ) + "</td></tr>\r\n";
-		//#ifdef ENABLE_ID_FILTERING_OPTION
-		htmlMessage += "<tr><td>ID filtering</td><td>";
-		(eepromConfig.id_filtering)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span> | <a class='button link' href='/configuration'>Configure</a> | <a href='/disable-id_filtering' class='button link'>Disable</a> " : htmlMessage += "disabled | <a href='/enable-id_filtering' class='button link'>Enable</a>";
-		htmlMessage += "</td></tr>\r\n";
-		//#endif
+		// ID filtering
+		if (!eepromConfig.settings_locked) {
+			htmlMessage += "<tr><td>ID filtering</td><td>";
+			(eepromConfig.id_filtering)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span> | <a class='button link' href='/configuration'>&#128295;&nbsp;Configure&nbsp;ID&nbsp;filtering</a> | <a href='/disable-id_filtering' class='button link'>&#10060; Disable&nbsp;ID&nbsp;filtering</a> " : htmlMessage += "disabled | <a href='/enable-id_filtering' class='button link'>&#10740; Enable ID filtering</a>";
+			htmlMessage += "</td></tr>\r\n";
+		} else {
+			htmlMessage += "<tr><td>ID filtering</td><td>";
+			(eepromConfig.id_filtering)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span>" : htmlMessage += "disabled";
+			htmlMessage += "</td></tr>\r\n";
+		}
+		// Compile date
+		htmlMessage += "<tr><td>Compile date</td><td>" + String (__DATE__ " " __TIME__) + "</td></tr>\r\n";
+		// Config version
 		htmlMessage += "<tr><td style='min-width:150px;'>Config version</td><td style='width:80%;'>" + String(CONFIG_VERSION) + "</td></tr>\r\n";
+		// Settings locked
+		htmlMessage += "<tr><td>Settings</td><td>";
+		(eepromConfig.settings_locked)? htmlMessage += "<span style=\"font-weight:bold\">locked</span> | <a href='/unlock-settings' class='button link'>&#128275;&nbsp;Unlock&nbsp;settings</a> " : htmlMessage += "unlocked | <a href='/lock-settings' class='button link'>&#128274;&nbsp;Lock&nbsp;settings</a>";
+		htmlMessage += "</td></tr>\r\n";
+		htmlMessage += "<tr><td></td><td><div class='note'>Note: if locked, prevents changing accidentally WiFi, MEGA reset, MQTT and ID filtering settings ; blocks also WiFi access point startup (not necessary once WiFi credentials are setup).</div></td></tr>\r\n";
 		htmlMessage += "</table>\r\n";
 
-		// Filesystem
-		htmlMessage += "<h3>Firmware and memory</h3>\r\n";
+		// Tools
+		htmlMessage += "<h3>Tools</h3>\r\n";
 		htmlMessage += "<table class='normal high'>\r\n";
-		htmlMessage += "<td style='min-width:150px;'><a href='/update' class='button link'>Load&nbsp;firmware</a></td><td style='width:80%;'>Load a new firmware for the ESP</td>\r\n";
+				if (eepromConfig.mega_reset_pin != -1) {
+			htmlMessage += "<tr><td><a id='menuresetmega' class='button link' href='/reset-mega' onclick = \"fetchAndNotify('/reset-mega');return false;\">&#128204;&nbsp;Reset&nbsp;MEGA</a></td><td>Reset RFLink MEGA board</td></tr>\r\n";
+		}		
+		htmlMessage += "<tr><td style='min-width:150px;'><a class='button link' href='/reboot' onclick = \"fetchAndNotify('/reboot');return false;\">&#128268;&nbsp;Reboot&nbsp;ESP</a></td><td>Restart espRFLinkMQTT</td></tr>\r\n";	
 		#ifdef ENABLE_SERIAL_DEBUG
-			htmlMessage += "<tr><td><a href='/read-eeprom' class='button link' onclick=\"fetchAndNotify('/read-eeprom');return false;\">Read&nbsp;EEPROM</a></td><td>Output EEPROM content to serial debug</td></tr>\r\n";
+			htmlMessage += "<tr><td><a href='/read-eeprom' class='button link' onclick=\"fetchAndNotify('/read-eeprom');return false;\">&#128065;&nbsp;Read&nbsp;EEPROM</a></td><td>Output EEPROM content to serial debug</td></tr>\r\n";
 		#endif
-		htmlMessage += "<tr><td><a href='/erase-eeprom' class='button link' onclick=\"fetchAndNotify('/erase-eeprom');return false;\">Erase&nbsp;EEPROM</a></td><td>Delete WiFi settings, MQTT settings, ID filtering configuration<br>Restore default values from firmware</td><tr>\r\n";
+		htmlMessage += "<tr><td><a href='/erase-eeprom' class='button link' onclick=\"fetchAndNotify('/erase-eeprom');return false;\">&#128465;&nbsp;Erase&nbsp;EEPROM</a></td><td>Delete WiFi settings, MQTT settings, ID filtering configuration and restore default values from firmware</td><tr>\r\n";
+		htmlMessage += "<tr><td><a href='/update' class='button link'>&#9881; Load&nbsp;firmware</a></td><td style='width:80%;'>Load new firmware to ESP</td></tr>\r\n";
 		#ifdef EXPERIMENTAL
 			htmlMessage += "<tr><td>RFLink packet lost</td><td>" + String (lost_packets) + "</td></tr>\r\n"; // TEST packet lost
 		#endif
-		htmlMessage += "<tr><td> Compile date</td><td>" + String (__DATE__ " " __TIME__) + "</td></tr>\r\n";
-		htmlMessage += "<tr><td> Free Mem</td><td>" + String (ESP.getFreeHeap()) + " K</td></tr>\r\n";
-		htmlMessage += "<tr><td> Heap Max Free Block</td><td>" + String(ESP.getMaxFreeBlockSize()) + " K</td></tr>\r\n"; 
-		htmlMessage += "<tr><td> Heap Fragmentation</td><td>" + String (ESP.getHeapFragmentation()) + "%</td></tr>\r\n";
+		#ifdef LOAD_TEST
+			htmlMessage += "<tr><td> Free Mem</td><td>" + String (ESP.getFreeHeap()) + " K</td></tr>\r\n";
+			htmlMessage += "<tr><td> Heap Max Free Block</td><td>" + String(ESP.getMaxFreeBlockSize()) + " K</td></tr>\r\n"; 
+			htmlMessage += "<tr><td> Heap Fragmentation</td><td>" + String (ESP.getHeapFragmentation()) + "%</td></tr>\r\n";
+		#endif
 		htmlMessage += "</table>\r\n";
 
 		// Page end
@@ -826,7 +924,22 @@ void ConfigHTTPserver() {
 				DEBUG_PRINTLN("MQTT settings updated.");
 			}
 		#endif
-
+		
+		// Pin to reset MEGA
+			if (httpserver.hasArg("save_mega_reset_pin")) {
+				int itemp = httpserver.arg("mega_reset_pin").toInt();
+				eepromConfig.mega_reset_pin = (itemp>=-1 && itemp<=16) ? itemp : -1;
+				saveEEPROM();
+				DEBUG_PRINTLN("MEGA reset pin updated.");
+			}
+		
+		// Auto reset MEGA interval
+			if (httpserver.hasArg("save_auto_reset_mega_interval")) {
+				eepromConfig.resetMegaInterval = httpserver.arg("resetMegaInterval").toDouble()*1000;
+				saveEEPROM();
+				DEBUG_PRINTLN("Auto reset MEGA interval updated.");
+			}
+		
 		DEBUG_PRINTLN("New EEPROM configuration:");
 		loadEEPROM();
 		showEEPROM();
@@ -846,7 +959,6 @@ void ConfigHTTPserver() {
 		};
 		if (httpserver.hasArg("save_configuration")) {
 			for (int i = 0+(16*page); i < min(filtered_id_number,16*(page+1)); i++){
-				//String arg_line = httpserver.arg("line["+String(i)+"]"	);
 				String arg_id = httpserver.arg("id["+String(i)+"]");
 				String arg_id_applied = httpserver.arg("id_a["+String(i)+"]");
 				String arg_description = httpserver.arg("d["+String(i)+"]");
@@ -1043,18 +1155,20 @@ void ConfigHTTPserver() {
  * Time functions
  */
 
-long uptime_min()
-{
- //long days=0;
- //long hours=0;
- long mins=0;
- long secs=0;
- secs = millis()/1000; 		//convect milliseconds to seconds
- mins=secs/60; 				//convert seconds to minutes
- //hours=mins/60; 			//convert minutes to hours
- //days=hours/24; 			//convert hours to days
- return mins;
+void publishUptimeAndRssi() {
+
+	char mqtt_publish_payload[50];
+	lastUptime = now;
+	sprintf(mqtt_publish_payload,"%ld", now/1000/60);
+	MQTTClient.publish(MQTT_UPTIME_TOPIC,mqtt_publish_payload,MQTT_RETAIN_FLAG);
+	DEBUG_PRINT("Uptime : ");DEBUG_PRINTLN(time_string_exp(millis()));
+
+	stpcpy(mqtt_publish_payload,"");
+	sprintf(mqtt_publish_payload,"%1d", WiFi.RSSI());
+	MQTTClient.publish(MQTT_RSSI_TOPIC,mqtt_publish_payload,MQTT_RETAIN_FLAG);
+
 }
+		
 
 String time_string_exp(long time) {
 	String result;
@@ -1094,6 +1208,59 @@ uint16_t crc16_ccitt(unsigned char* data, unsigned int data_len) {
 	}
 	return crc;
 }
+
+/**
+ * RFLInk WiFi board
+ */
+
+#ifdef RFLINK_WIFI_BOARD
+ 
+	void rflink_wifi_init()	{
+
+		DEBUG_PRINTLN("RFLink Wifi Board used, enabling watchog");
+
+		// configure hardware pins 
+		if (DEFAULT_PIN_I2C_SDA != -1) {
+			//DEBUG_PRINTLN("INIT : I2C");
+			Wire.setClock(DEFAULT_I2C_CLOCK_SPEED);
+			Wire.begin(DEFAULT_PIN_I2C_SDA, DEFAULT_PIN_I2C_SCL);
+		}
+
+		// I2C Watchdog boot status check
+		if (DEFAULT_WD_IC2_ADDRESS != 0) {
+			delay(500);
+			Wire.beginTransmission(DEFAULT_WD_IC2_ADDRESS);
+			Wire.write(0x83); // command to set pointer
+			Wire.write(17);   // pointer value to status byte
+			Wire.endTransmission();
+
+			Wire.requestFrom((uint8_t)DEFAULT_WD_IC2_ADDRESS, (uint8_t)1);
+
+			if (Wire.available()) {
+				byte status = Wire.read();
+
+				if (status & 0x1)
+				{
+				DEBUG_PRINTLN("INIT : Reset by WD!");
+				//lastBootCause = BOOT_CAUSE_EXT_WD;
+				}
+			}
+		}
+	}
+
+	void rflink_wifi_loop() {
+
+		// I2C Watchdog feed
+		if (DEFAULT_WD_IC2_ADDRESS != 0) {
+			Wire.beginTransmission(DEFAULT_WD_IC2_ADDRESS);
+			Wire.write(0xA5);
+			Wire.endTransmission();
+			//DEBUG_PRINTLN("INIT: reset WD loop");
+		}
+	  
+	}   
+
+#endif
 
 //********************************************************************************
 // Setup
@@ -1142,7 +1309,11 @@ void setup() {
 
 	// Setup WiFi
 	#ifdef ENABLE_WIFI_SETTINGS_ONLINE_CHANGE
-		setup_complex_wifi(); 
+		if (eepromConfig.settings_locked) {
+			setup_simple_wifi();
+		} else {
+			setup_complex_wifi(); 
+		}
 		// Start the HTTP server
 		httpserver.begin();
 		DEBUG_PRINTLN("HTTP server started");
@@ -1152,7 +1323,7 @@ void setup() {
 		httpserver.begin();
 		DEBUG_PRINTLN("HTTP server started");
 	#endif
-
+	
 	DEBUG_PRINT("Size of eepromConfig: ");DEBUG_PRINTLN(sizeof(eepromConfig));
 	DEBUG_PRINT("Size of filtered_IDs: ");DEBUG_PRINTLN(sizeof(filtered_IDs));
 	DEBUG_PRINT("Size of matrix: ");DEBUG_PRINTLN(sizeof(matrix));
@@ -1163,6 +1334,13 @@ void setup() {
 	delay(500);
 	rflinkSerialTX.println(F("10;version;"));                     // Ask version to RFLink
 
+	#ifdef RFLINK_WIFI_BOARD
+		rflink_wifi_init();
+	#endif
+	
+	mqttConnect();
+	publishUptimeAndRssi();
+	
 } // setup
 
 //********************************************************************************
@@ -1172,16 +1350,18 @@ void setup() {
 void loop() {
 
 	bool DataReady=false;
-	now = millis();
 
+	now = millis();
+	
 	// handle lost of connection : retry after 10s on each loop
 	if (!MQTTClient.connected()) {
 		
-		if (now - lastMqttConnect >= MQTT_CHECK_INTERVAL) {
+		if (now - lastMqttConnect > MQTT_CHECK_INTERVAL) {
 			DEBUG_PRINT("MQTT not connected");
-			if (mqttConnectionAttempts == 0) {
-				DEBUG_PRINT(" retrying after ");DEBUG_PRINT(MQTT_CHECK_INTERVAL/1000);DEBUG_PRINTLN(" s");
+			if (mqttConnectionAttempts != 0) {
+				DEBUG_PRINT(" - retrying after ");DEBUG_PRINT(MQTT_CHECK_INTERVAL/1000);DEBUG_PRINT(" s");
 				}
+			DEBUG_PRINTLN();
 			lastMqttConnect = now;
 			mqttConnect();
 		}
@@ -1227,7 +1407,7 @@ void loop() {
 			#endif
 
 			// Store last received data time if MQTT_ID is valid
-			if ( (strcmp(MQTT_ID,"") != 0) && (strcmp(MQTT_ID,"0\0") != 0) ) lastReceived = millis();
+			if ( (strcmp(MQTT_ID,"") != 0) && (strcmp(MQTT_ID,"0\0") != 0) ) lastReceived = now;
 			
 			// If user_specific_ids is used
 			for (int i = 0; i < (int) (sizeof(user_specific_ids) / sizeof(user_specific_ids[0])); i++){
@@ -1336,37 +1516,40 @@ void loop() {
 
 		// Handle uptime
 		if ( (now - lastUptime) > (UPTIME_INTERVAL) ) {						// if uptime interval is exceeded
-			char mqtt_publish_payload[50];
-			lastUptime = now;
-			sprintf(mqtt_publish_payload,"%ld", uptime_min());
-			MQTTClient.publish(MQTT_UPTIME_TOPIC,mqtt_publish_payload,MQTT_RETAIN_FLAG);
-			DEBUG_PRINT("Uptime : ");DEBUG_PRINTLN(time_string_exp(millis()));
+			publishUptimeAndRssi();
 		}
 
+#ifdef RFLINK_WIFI_BOARD							 
+		// Handle RFLink WiFi board
+		if ( (now - lastSecond) > (1000) ) {								// every 1s
+			lastSecond = now;
+			rflink_wifi_loop();
+		}										
+#endif   
 		// Handle Mega reset if no data is received
-		if (resetMegaInterval > 0) {										// only if enabled
-			if ( (now - lastReceived) > (resetMegaInterval) ) {    			// if time interval exceeded, reset Mega
+		if ( (eepromConfig.resetMegaInterval > 0) && (eepromConfig.mega_reset_pin != -1) ) {// only if enabled
+			if ( (now - lastReceived) > (eepromConfig.resetMegaInterval) ) {    			// if time interval exceeded, reset Mega
+				DEBUG_PRINT("No data received for ");DEBUG_PRINT(time_string_exp(now - lastReceived));
+				DEBUG_PRINTLN(": Resetting Mega");
 				resetMegaCounter += 1;
+				lastReceived = now;															// Fake the last received time to avoid permanent reset
 				/*#if defined(MQTT_MEGA_RESET_TOPIC)
 				char mqtt_publish_payload[50];
 				sprintf(mqtt_publish_payload,"%ld", resetMegaCounter);
 				MQTTClient.publish(MQTT_MEGA_RESET_TOPIC,mqtt_publish_payload);
 				#endif*/
-				DEBUG_PRINT("No data received for ");DEBUG_PRINT(time_string_exp(now - lastReceived));
-				DEBUG_PRINTLN(": Resetting Mega");
 				#if defined(MQTT_MEGA_RESET_TOPIC)
 				  MQTTClient.publish(MQTT_MEGA_RESET_TOPIC,"1",MQTT_RETAIN_FLAG);
 				  delay(1000);
 				  MQTTClient.publish(MQTT_MEGA_RESET_TOPIC,"0",MQTT_RETAIN_FLAG);
 				#endif
 				delay(200);
-				pinMode(MEGA_RESET_PIN, OUTPUT);
-				delay(200);
-				digitalWrite(MEGA_RESET_PIN,false);					// Change the state of pin to ground
+				pinMode(eepromConfig.mega_reset_pin, OUTPUT);
+				//delay(200);
+				digitalWrite(eepromConfig.mega_reset_pin,false);							// Change the state of pin to ground
 				delay(1000); 
-				digitalWrite(MEGA_RESET_PIN,true);					// Change the state of pin to VCC
+				digitalWrite(eepromConfig.mega_reset_pin,true);								// Change the state of pin to VCC
 				delay(50);
-				lastReceived = millis();							// Fake the last received time to avoid permanent reset
 			}
 		}
 
@@ -1377,5 +1560,5 @@ void loop() {
 
 	ArduinoOTA.handle();						// Listen for OTA update
 	httpserver.handleClient();					// Listen for HTTP requests from clients
-
+		
 } // loop

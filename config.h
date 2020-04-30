@@ -17,9 +17,8 @@ HardwareSerial & rflinkSerialTX = Serial;		// rflinkSerialTX is used for command
 //SoftwareSerial softSerial(4, 2, false);		// software serial TX to RFLink on GPIO2/D4 ; software serial RX from GPIO4/D2 pin (unused) 
 //SoftwareSerial & rflinkSerialTX = softSerial;          
 
-#define MEGA_RESET_PIN 16						// ESP pin connected to MEGA reset pin - GPIO16 = D0
-#define MEGA_AUTO_RESET_INTERVAL 0 * 60 * 1000	// Auto reset Mega if no data is received during this period of time (in ms) - 0 to disable
-
+#define DEFAULT_MEGA_RESET_PIN -1				// ESP pin connected to MEGA reset pin ; this is the default value and it can be changed from the web interface ; examples: -1 for none, 16 for GPIO16 (D0)
+#define DEFAULT_MEGA_AUTO_RESET_INTERVAL 0 * 60 * 1000	// Auto reset MEGA if no data is received during this period of time (in ms), 0 to disable ; this is the default value and it can be changed from the web interface
 
 //********************************************************************************
 // Wi-Fi parameters
@@ -54,11 +53,10 @@ If defined (line uncommented):
 
 #define ENABLE_MQTT_SETTINGS_ONLINE_CHANGE		// If defined, the four settings below can be changed in the webinterface
 
-#define MQTT_SERVER "192.168.1.10"					// MQTT Server
+#define MQTT_SERVER "192.168.1.1"					// MQTT Server
 #define MQTT_PORT 1883								// MQTT server port
 #define MQTT_USER ""								// MQTT Server user
-#define MQTT_PASSWORD ""							// MQTT Server password
-
+#define MQTT_PASSWORD ""							// MQTT Server password   
 #define MQTT_PUBLISH_TOPIC "rflink"					// MQTT topic to publish to (data from RFLink to MQTT)
 #define MQTT_RFLINK_CMD_TOPIC "rflink/cmd"			// MQTT topic to listen to (commands from MQTT to RFLink)
 #define MQTT_RETAIN_FLAG false						// If true, messages will be published with the retain flag
@@ -68,6 +66,8 @@ If defined (line uncommented):
 
 #define MQTT_DEBUG_TOPIC "rflink/debug"				// MQTT debug topic to publish raw data, name, ID, MQTT topic and daata json. This is published using a json format.
 #define MQTT_UPTIME_TOPIC "rflink/uptime"			// MQTT topic for uptime
+#define MQTT_RSSI_TOPIC "rflink/rssi"				// MQTT topic for WiFi RSSI
+
 
 #define MQTT_MEGA_RESET_TOPIC "rflink/mega_reset"	// MQTT topic whereto publish a 1s pulse when resetting RFLink Mega
 
@@ -96,40 +96,40 @@ This table allows to configure default values for IDs that will be filtered on b
 // Default ID filtering configuration with 9 devices which ID are filtered for
 		{"1082","1082",30 * 60 * 1000,"Auriol V3"},					// 1
 		{"0210","0210",30 * 60 * 1000,"Alecto V5"},					// 2
-		{"2A04","2A1C",30 * 60 * 1000,"Oregon Rain2"},					// 3
-		{"00004","00000",0,"device always updated"},			// 4
+		{"2A04","2A1C",30 * 60 * 1000,"Oregon Rain2"},				// 3
+		{"00004","00000",0,"device always updated"},				// 4
 		{"00005","00000",30 * 60 * 1000,"device max 30min update"},	// 5
 		{"00006","00000",1 * 1000,"device max 1s update"},			// 6
 		{"00007","00000",1 * 1000,"device #7 description"},			// 7
 		{"00008","00000",1 * 1000,"device #8 description"},			// 8
 		{"00009","00000",1 * 1000,"last device description"},		// 9
-		{"","",0,"no ID after last device"},					// 10
-		{"","",0,"#11"},										// 11
-		{"","",0,"#12"},										// 12
-		{"","",0,"#13"},										// 13
-		{"","",0,"#14"},										// 14
-		{"","",0,"#15"},										// 15
-		{"","",0,"#16"},										// 16
-		{"","",0,"#17"},										// 17
-		{"","",0,"#18"},										// 18
-		{"","",0,"#19"},										// 19
-		{"","",0,"#20"},										// 20
-		{"","",0,"#21"},										// 21
-		{"","",0,"#22"},										// 22
-		{"","",0,"#23"},										// 23
-		{"","",0,"#24"},										// 24
-		{"","",0,"#25"},										// 25
-		{"","",0,"#26"},										// 26
-		{"","",0,"#27"},										// 27
-		{"","",0,"#28"},										// 28
-		{"","",0,"#29"},										// 29
-		{"","",0,"#30"},										// 30
-		{"","",0,"#31"},										// 31
-		{"","",0,"#32"},										// 32
+		{"","",0,"no ID after last device"},						// 10
+		{"","",0,"#11"},											// 11
+		{"","",0,"#12"},											// 12
+		{"","",0,"#13"},											// 13
+		{"","",0,"#14"},											// 14
+		{"","",0,"#15"},											// 15
+		{"","",0,"#16"},											// 16
+		{"","",0,"#17"},											// 17
+		{"","",0,"#18"},											// 18
+		{"","",0,"#19"},											// 19
+		{"","",0,"#20"},											// 20
+		{"","",0,"#21"},											// 21
+		{"","",0,"#22"},											// 22
+		{"","",0,"#23"},											// 23
+		{"","",0,"#24"},											// 24
+		{"","",0,"#25"},											// 25
+		{"","",0,"#26"},											// 26
+		{"","",0,"#27"},											// 27
+		{"","",0,"#28"},											// 28
+		{"","",0,"#29"},											// 29
+		{"","",0,"#30"},											// 30
+		{"","",0,"#31"},											// 31
+		{"","",0,"#32"},											// 32
 };
 // Note: ID filtering configuration is now saved in eeprom memory and can be changed online in the /configuration page. This is very useful when a device changes ID in order to keep using the same MQTT topic. If changes are made online, the /configuration page provides directly the new code to update here.
 
-#define CONFIG_VERSION 20200410
+#define CONFIG_VERSION 20200430
 // Changing this number overwrites the configuration in eeprom memory with configuration in this file (config.h).
 // =====>>> In general to be safe, you should always update this number after making changes in this file <<<===== 
 
@@ -147,6 +147,7 @@ const char* const user_specific_ids[][3] = {    // This is used to force a speci
   //{ "Alecto_V5"  ,  "0001" , "0210"   },
 };
 
+
 //********************************************************************************
 // Interface parameters
 //********************************************************************************
@@ -158,5 +159,20 @@ const char* const user_cmds[][2] = {			// These are predefined user commands to 
   { "REBOOT"			,  "10;reboot;"								},
 };
 
+
+//********************************************************************************
+// RFLink Wifi board
+// https://www.nodo-shop.nl/en/home/191-rflink-wifi-koppelprint.html
+//********************************************************************************
+
+// Uncomment following line if using this board in order to use watchdog functions
+#define RFLINK_WIFI_BOARD
+
+#ifdef RFLINK_WIFI_BOARD
+  #define DEFAULT_PIN_I2C_SDA              4
+  #define DEFAULT_PIN_I2C_SCL              5
+  #define DEFAULT_I2C_CLOCK_SPEED          400000
+  #define DEFAULT_WD_IC2_ADDRESS           38
+#endif
 
 #endif

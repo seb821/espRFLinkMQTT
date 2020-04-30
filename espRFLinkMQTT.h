@@ -33,7 +33,7 @@
 typedef struct {
   char id[MAX_ID_LEN+1];        			// ID
   char id_applied[MAX_ID_LEN+1];			// ID applied -> used for MQTT topic
-  long publish_interval;        			// interval to publish (ms) if data did not change
+  unsigned long publish_interval;        	// interval to publish (ms) if data did not change
   char description[MAX_DATA_LEN+1];         // Device description
 } _filtered_IDs;
 
@@ -43,30 +43,33 @@ typedef struct {
 // Structure for MQTT configuration
 typedef struct 
 {
-	char  		server[CFG_MQTT_SERVER_SIZE+1];     	// Broker 
-	char  		user[CFG_MQTT_USER_SIZE+1]; 			// User
-	char  		password[CFG_MQTT_PASSWORD_SIZE+1]; 	// Pass
-	uint16_t 	port;                        			// Protocol port
+	char  			server[CFG_MQTT_SERVER_SIZE+1];     	// Broker 
+	char  			user[CFG_MQTT_USER_SIZE+1]; 			// User
+	char  			password[CFG_MQTT_PASSWORD_SIZE+1]; 	// Pass
+	uint16_t 		port;                        			// Protocol port
 } 	_mqtt;
 
 // Structure for configuration
-typedef struct { 										// structure to store configuration in EEPROM memory
-	char		ssid[CFG_SSID_SIZE+1]; 		 			// SSID     
-	char		psk[CFG_PSK_SIZE+1]; 		   			// Pre shared key
-	char		hostname[CFG_HOSTNAME_SIZE+1]; 		   	// Hostname
-	_mqtt		mqtt;                 					// MQTT configuration
-	bool		id_filtering;							// ID filtering enabled
+typedef struct { 											// structure to store configuration in EEPROM memory
+	char			ssid[CFG_SSID_SIZE+1]; 		 			// SSID     
+	char			psk[CFG_PSK_SIZE+1]; 		   			// Pre shared key
+	char			hostname[CFG_HOSTNAME_SIZE+1]; 		   	// Hostname
+	_mqtt			mqtt;                 					// MQTT configuration
+	int				mega_reset_pin;							// Pin to reset MEGA
+	unsigned long	resetMegaInterval;						// Auto reset MEGA
+	bool			id_filtering;							// ID filtering enabled
 	_filtered_IDs 	filtered_id[FILTERED_ID_SIZE];
+	bool			settings_locked;						// Lock settings and block access point
 	unsigned int 	version;
 } 	_eepromConfig;
 
 
 // Structure for matrix 
-typedef struct { 										// structure for additionnal data when IP filtering is used
-  char 			json[3*MAX_DATA_LEN]; 					// store last json message
-  //uint16_t 	json_checksum;							// store last json checksum
-  long 			last_published;    						// store last published time (millis)
-  long 			last_received;     						// store last received time (millis)
+typedef struct { 											// structure for additionnal data when IP filtering is used
+  char 				json[3*MAX_DATA_LEN]; 					// store last json message
+  //uint16_t 		json_checksum;							// store last json checksum
+  unsigned long 	last_published;    						// store last published time (millis)
+  unsigned long 	last_received;     						// store last received time (millis)
 } _matrix;
 
 //********************************************************************************
@@ -75,24 +78,25 @@ typedef struct { 										// structure for additionnal data when IP filtering i
 
 const int filtered_id_number = min(FILTERED_ID_SIZE,(int) (sizeof(filtered_IDs) / sizeof(filtered_IDs[0]))); 
 
-long now = millis();
 
-bool MQTT_DEBUG = 0;										// debug variable to publish received data on MQTT debug topic ; default is disabled, can be enabled from web interface
+
+bool MQTT_DEBUG = 0;									// debug variable to publish received data on MQTT debug topic ; default is disabled, can be enabled from web interface
 int mqttConnectionAttempts = 0;
-#define MQTT_CHECK_INTERVAL 10000L							// check MQTT connection every 10s ; not too low to leave time for other functions (web interface, ...)	
-long lastMqttConnect = -MQTT_CHECK_INTERVAL;				// timer to check MQTT connection ; negative value forces it at startup
+#define MQTT_CHECK_INTERVAL 10000L						// check MQTT connection every 10s ; not too low to leave time for other functions (web interface, ...)	
+unsigned long lastMqttConnect = 0;						// timer to check MQTT connection ; negative value forces it at startup
 
-long lastReceived = now;									// store last received data time from RFLink
+unsigned long lastReceived = 0;							// store last received data time from RFLink
 
-#define UPTIME_INTERVAL 300000L								// publish uptime every 5 min
-long lastUptime = - UPTIME_INTERVAL;						// timer to publish uptime on MQTT server ; negative value forces update at startup
+#define UPTIME_INTERVAL 300000L							// publish uptime every 5 min
+unsigned long lastUptime = 0;							// timer to publish uptime on MQTT server ; negative value forces update at startup
 
-const long resetMegaInterval = MEGA_AUTO_RESET_INTERVAL; 	// auto reset Mega if no data is received during more than x min - 0 to disable
-int resetMegaCounter = 0;									// number of times Mega is reset
+unsigned long now = 0;
+
+int resetMegaCounter = 0;								// number of times Mega is reset
 
 _eepromConfig eepromConfig;
 const int eepromAddress = 0;												// Start address for eeprom config
-const int eepromConfigMaxSize = max(3840, (int) sizeof(eepromConfig));		// Lenght for eeprom config- leaves some space
+const int eepromConfigMaxSize = max(3840, (int) sizeof(eepromConfig));		// Length for eeprom config - leaves some space
 
 _matrix matrix[FILTERED_ID_SIZE];
 
@@ -128,7 +132,7 @@ static const char cssDatasheet[] PROGMEM = ""     // CSS
 	"table.condensed td {padding: 0px 20px 0px 5px; height: 1em;}table.condensed tr {padding: 0px; }table.condensed {padding: 0px;border-left:1px solid #EEE;} .button.link {font-weight:normal;} #menunotification {margin-left: 2em;border-left: 1px solid #EEE;padding-left: 10px;padding-top:5px;} #menunotification td {min-width: 250px;} #configuration_table input[type=number] {width: 8em;} table.high td {height: 40px;} #cmds a {float:left;}\r\n"
 	"table.multirow-left td {text-align: left;} table.multirow td.t-left, th.t-left {text-align: left;}\r\n"
 	""  // from ESP Easy Mega release 20180914 - second part
-	"@media screen and (max-width: 640px) {span.showmenulabel { display: none; }.menu { max-width: 11vw; max-width: 48px; }\r\n";
+	"@media screen and (max-width: 420) {span.showmenulabel { display: none; }.menu { max-width: 11vw; max-width: 48px; }\r\n";
 
 static const char htmlMenu[] PROGMEM = ""     // Menu
 	"<header class='headermenu'>\r\n"
@@ -152,8 +156,8 @@ static const char htmlMenu[] PROGMEM = ""     // Menu
 	"<div class='menubar'>"
 	"<a id='menuhome' class='menu' href='.'>&#8962;<span class='showmenulabel'>Home</span></a>\r\n"
 	"<a id='menulivedata' class='menu' href='/livedata'>&#128172;<span class='showmenulabel'>Live Data</span></a>\r\n"
-	"<a id='menuresetmega' class='menu' href='/reset-mega' onclick = \"fetchAndNotify('/reset-mega');return false;\">&#128204;<span class='showmenulabel'>Reset MEGA</span></a>\r\n"
-	"<a id='menureboot' class='menu' href='/reboot' onclick = \"fetchAndNotify('/reboot');return false;\">&#128268;<span class='showmenulabel'>Reboot ESP</span></a>\r\n"
+	//"<a id='menuresetmega' class='menu' href='/reset-mega' onclick = \"fetchAndNotify('/reset-mega');return false;\">&#128204;<span class='showmenulabel'>Reset MEGA</span></a>\r\n"
+	//"<a id='menureboot' class='menu' href='/reboot' onclick = \"fetchAndNotify('/reboot');return false;\">&#128268;<span class='showmenulabel'>Reboot ESP</span></a>\r\n"
 	"<a id='menuinfos' class='menu' href='/infos'>&#128295;<span class='showmenulabel'>System</span></a>\r\n"
 	"</div>\r\n"
 	"</header>\r\n"
@@ -172,4 +176,8 @@ static const char htmlMenu[] PROGMEM = ""     // Menu
 	static const char htmlEnd[] PROGMEM = ""     // Html page end part
     "<br><footer><h6>Powered by <a href='https://github.com/seb821' style='font-size: 0.9em; text-decoration: none'>github.com/seb821</a></h6></footer>\r\n"
     "</body>\r\n</html>\r\n";
-	
+
+#ifdef RFLINK_WIFI_BOARD
+	#include <Wire.h> // RFLInk WiFi board
+	unsigned long lastSecond = 0;
+#endif
