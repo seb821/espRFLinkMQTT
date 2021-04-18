@@ -474,14 +474,11 @@ void ConfigHTTPserver() {
 				#endif
 			}
 			htmlMessage += "</table>\r\n";
-			htmlMessage += "<div class='note'>* Only the above IDs are published on MQTT server, and if data changed or interval time was exceeded.</div><br>\r\n";
-			//htmlMessage += "<a href='/disable-id_filtering' class='button link'>&#10060; Disable ID filtering</a> \r\n";
-			htmlMessage += "<a class='button link' href='/configuration'>&#9881;&nbsp;Configure&nbsp;ID&nbsp;filtering</a>\r\n";
+			htmlMessage += "<div class='note'>* Only the above IDs are published on MQTT server, and if data changed or interval time was exceeded.</div>\r\n";
 			
 		} else {
-			htmlMessage += "<h3 id='configuration'>No ID filtering *</h3>\r\n";
-			htmlMessage += "<div class='note'>* All received messages are forwarded to MQTT server ; see System tab to enable ID filtering.</div>\r\n";
-			//<br><a href='/enable-id_filtering' class='button link' style='font-weight:normal'>Enable ID filtering</a>
+			//htmlMessage += "<h3 id='configuration'>No ID filtering *</h3>\r\n";
+			//htmlMessage += "<div class='note'>* All received messages are forwarded to MQTT server ; see System tab to enable ID filtering.</div>\r\n";
 		}
 		htmlMessage += "<br>\r\n";
 		
@@ -668,14 +665,14 @@ void ConfigHTTPserver() {
 	httpserver.on("/enable-debug",[](){
 		DEBUG_PRINTLN("Enabling MQTT debug...");
 		MQTT_DEBUG = 1;
-		httpserver.sendHeader("Location","/infos");
+		httpserver.sendHeader("Location","/system");
 		httpserver.send(303);
 	});
 	httpserver.on("/disable-debug",[](){
 		DEBUG_PRINTLN("Disabling MQTT debug...");
 		MQTT_DEBUG = 0;
 		MQTTClient.publish(MQTT_DEBUG_TOPIC,"{\"DATA\":\" \",\"ID\":\" \",\"NAME\":\" \",\"TOPIC\":\" \",\"JSON\":\" \"}",1);
-		httpserver.sendHeader("Location","/infos");
+		httpserver.sendHeader("Location","/system");
 		httpserver.send(303);
 	});
 
@@ -683,14 +680,14 @@ void ConfigHTTPserver() {
 		DEBUG_PRINTLN("Enabling ID filtering...");
 		eepromConfig.id_filtering = 1;
 		saveEEPROM();
-		httpserver.sendHeader("Location","infos");
+		httpserver.sendHeader("Location","/system");
 		httpserver.send(303);
 	});
 	httpserver.on("/disable-id_filtering",[](){
 		DEBUG_PRINTLN("Disabling ID filtering...");
 		eepromConfig.id_filtering = 0;
 		saveEEPROM();
-		httpserver.sendHeader("Location","/infos");
+		httpserver.sendHeader("Location","/system");
 		httpserver.send(303);
 		});
 
@@ -698,14 +695,14 @@ void ConfigHTTPserver() {
 		DEBUG_PRINTLN("Enabling ID filtering...");
 		eepromConfig.settings_locked = 1;
 		saveEEPROM();
-		httpserver.sendHeader("Location","/infos");
+		httpserver.sendHeader("Location","/system");
 		httpserver.send(303);
 	});
 	httpserver.on("/unlock-settings",[](){
 		DEBUG_PRINTLN("Disabling ID filtering...");
 		eepromConfig.settings_locked = 0;
 		saveEEPROM();
-		httpserver.sendHeader("Location","/infos");
+		httpserver.sendHeader("Location","/system");
 		httpserver.send(303);
 		});
 		
@@ -725,8 +722,8 @@ void ConfigHTTPserver() {
 		httpserver.send(200, "text/html", htmlMessage);
 	});
 
-	httpserver.on("/infos", [](){
-		DEBUG_PRINTLN("Html page requested: /infos");
+	httpserver.on("/system", [](){
+		DEBUG_PRINTLN("Html page requested: /system");
 		
 		String htmlMessage = "";
 		// Page start
@@ -737,10 +734,10 @@ void ConfigHTTPserver() {
 		htmlMessage += "<script>\r\n";
 		if (!MQTTClient.connected()) {
 			htmlMessage += "window.onload = function() { document.getElementById('menunotification').innerHTML = 'Warning: MQTT not connected !';};\r\n"; };
-		htmlMessage += "document.getElementById('menuinfos').classList.add('active');</script>";
+		htmlMessage += "document.getElementById('menusystem').classList.add('active');</script>";
 
 		// System Info
-		htmlMessage += "<h3>System Info and Settings</h3>\r\n";
+		htmlMessage += "<h3>Information and Settings</h3>\r\n";
 		htmlMessage += "<table class='normal'>\r\n";
 		htmlMessage += "<tr><td>Uptime</td><td>" + String(time_string_exp(millis())) + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>WiFi network</td><td><table class='condensed'><tr><td>" + String(WiFi.SSID()) + " " + WiFi.RSSI() + " dBm | <a href='/wifi-scan' class='button link' onclick=\"fetchAndNotify('/wifi-scan');return false;\">&#128246;&nbsp;Scan</a></td></tr></table>";
@@ -797,10 +794,10 @@ void ConfigHTTPserver() {
 		htmlMessage += "<tr><td>publish (json)</td><td> " + String(MQTT_PUBLISH_TOPIC) + "/Protocol_Name-ID</td></tr>\r\n";
 		htmlMessage += "<tr><td>commands to rflink</td><td> " + String(MQTT_RFLINK_CMD_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>last will ( " + String(MQTT_WILL_ONLINE) + " / " + String(MQTT_WILL_OFFLINE) + " )</td><td> " + String(MQTT_WILL_TOPIC) + "</td></tr>\r\n";
-		htmlMessage += "<tr><td>uptime (min, every " + String( int( float(UPTIME_INTERVAL) *0.001 / 60) ) + ")</td><td> " + String(MQTT_UPTIME_TOPIC) + "</td></tr>\r\n";
+		htmlMessage += "<tr><td>uptime (every " + String( int( float(UPTIME_INTERVAL) *0.001 / 60) ) + "minutes)</td><td> " + String(MQTT_UPTIME_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>rssi (dBm)</td><td> " + String(MQTT_RSSI_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "<tr><td>debug (data from rflink)</td><td> " + String(MQTT_DEBUG_TOPIC) + "</td></tr>\r\n";
-		htmlMessage += "<tr><td>mega reset pulse</td><td> " + String(MQTT_MEGA_RESET_TOPIC) + "</td></tr>\r\n";
+		htmlMessage += "<tr><td>mega reset info (pulse)</td><td> " + String(MQTT_MEGA_RESET_TOPIC) + "</td></tr>\r\n";
 		htmlMessage += "</table></td></tr>\r\n";
 		htmlMessage += "<tr><td>MQTT retain flag</td><td>" + String((MQTT_RETAIN_FLAG)? "true" : "false") + "</td></tr>\r\n";
 		// Mega Reset
@@ -851,7 +848,7 @@ void ConfigHTTPserver() {
 		// ID filtering
 		if (!eepromConfig.settings_locked) {
 			htmlMessage += "<tr><td>ID filtering</td><td>";
-			(eepromConfig.id_filtering)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span> | <a class='button link' href='/configuration'>&#128295;&nbsp;Configure&nbsp;ID&nbsp;filtering</a> | <a href='/disable-id_filtering' class='button link'>&#10060; Disable&nbsp;ID&nbsp;filtering</a> " : htmlMessage += "disabled | <a href='/enable-id_filtering' class='button link'>&#10740; Enable ID filtering</a>";
+			(eepromConfig.id_filtering)? htmlMessage += "<span style=\"font-weight:bold\">enabled</span> | <a class='button link' href='/idfiltering'>&#9881;&nbsp;Configure&nbsp;ID&nbsp;filtering</a> | <a href='/disable-id_filtering' class='button link'>&#10060;&nbsp;Disable&nbsp;ID&nbsp;filtering</a> " : htmlMessage += "disabled | <a href='/enable-id_filtering' class='button link'>&#10740;&nbsp;Enable&nbsp;ID&nbsp;filtering</a>";
 			htmlMessage += "</td></tr>\r\n";
 		} else {
 			htmlMessage += "<tr><td>ID filtering</td><td>";
@@ -879,8 +876,8 @@ void ConfigHTTPserver() {
 		#ifdef ENABLE_SERIAL_DEBUG
 			htmlMessage += "<tr><td><a href='/read-eeprom' class='button link' onclick=\"fetchAndNotify('/read-eeprom');return false;\">&#128065;&nbsp;Read&nbsp;EEPROM</a></td><td>Output EEPROM content to serial debug</td></tr>\r\n";
 		#endif
-		htmlMessage += "<tr><td><a href='/erase-eeprom' class='button link' onclick=\"fetchAndNotify('/erase-eeprom');return false;\">&#128465;&nbsp;Erase&nbsp;EEPROM</a></td><td>Delete WiFi settings, MQTT settings, ID filtering configuration and restore default values from firmware</td><tr>\r\n";
-		htmlMessage += "<tr><td><a href='/update' class='button link'>&#9881; Load&nbsp;firmware</a></td><td style='width:80%;'>Load new firmware to ESP</td></tr>\r\n";
+		htmlMessage += "<tr><td><a href='/erase-eeprom' class='button link' onclick=\"return confirm('This will erase all settings and restore firmware defaults. Please confirm.')\">&#128465;&nbsp;Erase&nbsp;EEPROM</a></td><td>Delete WiFi settings, MQTT settings, ID filtering configuration and restore default values from firmware</td><tr>\r\n";
+		htmlMessage += "<tr><td><a href='/update' class='button link'>&#9881;&nbsp;Load&nbsp;firmware</a></td><td style='width:80%;'>Load new firmware to ESP</td></tr>\r\n";
 		#ifdef EXPERIMENTAL
 			htmlMessage += "<tr><td>RFLink packet lost</td><td>" + String (lost_packets) + "</td></tr>\r\n"; // TEST packet lost
 		#endif
@@ -943,13 +940,13 @@ void ConfigHTTPserver() {
 		DEBUG_PRINTLN("New EEPROM configuration:");
 		loadEEPROM();
 		showEEPROM();
-		httpserver.sendHeader("Location","/infos");
+		httpserver.sendHeader("Location","/system");
 		httpserver.send(303);
 
 	});
 
-	httpserver.on("/configuration", [](){						// Used to change filtered_IDs configuration in EEPROM
-		DEBUG_PRINTLN("Html page requested: /configuration");
+	httpserver.on("/idfiltering", [](){						// Used to change filtered_IDs configuration in EEPROM
+		DEBUG_PRINTLN("Html page requested: /idfiltering");
 		
 		// URL arguments
 		int page = 0;
@@ -959,15 +956,17 @@ void ConfigHTTPserver() {
 		};
 		if (httpserver.hasArg("save_configuration")) {
 			for (int i = 0+(16*page); i < min(filtered_id_number,16*(page+1)); i++){
-				String arg_id = httpserver.arg("id["+String(i)+"]");
-				String arg_id_applied = httpserver.arg("id_a["+String(i)+"]");
-				String arg_description = httpserver.arg("d["+String(i)+"]");
-				String arg_publish_interval = httpserver.arg("pi["+String(i)+"]");
-				DEBUG_PRINTLN(arg_id + " - " + arg_id_applied + " - " + arg_description + " - " + arg_publish_interval);
-				arg_id.toCharArray(eepromConfig.filtered_id[i].id,MAX_ID_LEN+1);
-				arg_id_applied.toCharArray(eepromConfig.filtered_id[i].id_applied,MAX_ID_LEN+1);
-				arg_description.toCharArray(eepromConfig.filtered_id[i].description,MAX_DATA_LEN+1);
-				eepromConfig.filtered_id[i].publish_interval = max((long) 0,arg_publish_interval.toInt()*1000);
+				if (httpserver.hasArg("id["+String(i)+"]")) {
+					String arg_id = httpserver.arg("id["+String(i)+"]");
+					String arg_id_applied = httpserver.arg("id_a["+String(i)+"]");
+					String arg_description = httpserver.arg("d["+String(i)+"]");
+					String arg_publish_interval = httpserver.arg("pi["+String(i)+"]");
+					DEBUG_PRINTLN(arg_id + " - " + arg_id_applied + " - " + arg_description + " - " + arg_publish_interval);
+					arg_id.toCharArray(eepromConfig.filtered_id[i].id,MAX_ID_LEN+1);
+					arg_id_applied.toCharArray(eepromConfig.filtered_id[i].id_applied,MAX_ID_LEN+1);
+					arg_description.toCharArray(eepromConfig.filtered_id[i].description,MAX_DATA_LEN+1);
+					eepromConfig.filtered_id[i].publish_interval = max((long) 0,arg_publish_interval.toInt()*1000);
+				}
 			}
 		}
 
@@ -977,18 +976,22 @@ void ConfigHTTPserver() {
 
 		// Header + menu
 		htmlMessage += FPSTR(htmlMenu);
+		htmlMessage += "<script>\r\n";
+		if (!MQTTClient.connected()) {
+			htmlMessage += "window.onload = function() { document.getElementById('menunotification').innerHTML = 'Warning: MQTT not connected !';};\r\n"; };
+		htmlMessage += "document.getElementById('menuid').classList.add('active');</script>";
 
 		if (eepromConfig.id_filtering) {						// show list of filtered IDS
 			htmlMessage += "<h3>ID filtering configuration\r\n";
 			if (filtered_id_number > 16) {
 				for (int i = 0; i <= ((int) (filtered_id_number-1)/16); i++){
-					htmlMessage += "<a href='/configuration?page=" + String(i) + "' class='button link'>" + String(i*16+1) + " - " + String(min(filtered_id_number,i*16+16)) + "</a>\r\n";
+					htmlMessage += "<a href='/idfiltering?page=" + String(i) + "' class='button link'>" + String(i*16+1) + " - " + String(min(filtered_id_number,i*16+16)) + "</a>\r\n";
 				}
 				htmlMessage += "</h3><br>\r\n";
 			}
 			htmlMessage += "<div class='note'>Make changes in the table below and click on \"Apply configuration\". It can be tested immediately.<br>If OK, save configuration to permanent memory by clicking on \"Save to EEPROM\".<br>Tip: Leave an empty ID after last device. ID filtering comparison will stop there.</div><br>\r\n";
 
-			htmlMessage += "<form method='post' action='/configuration'><input type='hidden' name='page' value=" + String(page) + ">\r\n";
+			htmlMessage += "<form method='post' action='/idfiltering'><input type='hidden' name='page' value=" + String(page) + ">\r\n";
 			htmlMessage += "<input type='hidden' name='save_configuration' value='1'>";
 			htmlMessage += "<table class='multirow' id='configuration_table'><tr><th>#</th><th>ID</th><th>ID applied</th><th>Description</th><th>Publish Interval (s)  </th><th></th></tr>\r\n";
 			for (int i = 0+(16*page); i < min(filtered_id_number,16*(page+1)); i++){
@@ -1000,11 +1003,12 @@ void ConfigHTTPserver() {
 				htmlMessage += "<td><input type='number' name='pi[" + String(i) + "]' step='1' min='0' value='" + String((int) eepromConfig.filtered_id[i].publish_interval/1000) + "'></td>";
 				htmlMessage += "<td></td></tr>\r\n";
 			}
-			htmlMessage += "</table><br><input type='submit' value='Apply configuration'></form><br><br>\r\n";
-			htmlMessage += "<a class='button link' href='/save-eeprom' onclick=\"fetchAndNotify('/save-eeprom');return false;\">Save to EEPROM</a> => Save configuration to persistent memory, or changes will be lost on next reboot";  
+			htmlMessage += "</table><br><input type='submit' value='Apply configuration'></form><br>\r\n";
+			htmlMessage += "<a class='button link' href='/save-eeprom' onclick=\"fetchAndNotify('/save-eeprom');return false;\">Save to EEPROM</a> => After applying, this is to save configuration to persistent memory. Otherwise, changes will be lost on next reboot";  
 			htmlMessage += "<br><br><br><div style='font-size:0.8em;'>In case you compile your own firmware, you can update easily config.h file with current configuration using <a style='font-size:0.8em;' href='/config_h_code'>this code</a><div><br>\r\n";
 		} else {
-			htmlMessage += "<h3>ID filtering is disabled</h3><br>\r\n";
+			htmlMessage += "<h3>ID filtering is disabled *</h3><br>\r\n";
+			htmlMessage += "<div class='note'>* All received messages are forwarded to MQTT server ; see System tab to enable ID filtering.</div>\r\n";
 		}
 		
 		// Page end
@@ -1140,7 +1144,7 @@ void ConfigHTTPserver() {
 		delay(100);
 		EEPROM.end();
 		httpserver.send(200, "text/html", "EEPROM read to serial");
-		//httpserver.sendHeader("Location","/infos");
+		//httpserver.sendHeader("Location","/system");
 		//httpserver.send(303);
 	});
 	#endif
@@ -1187,27 +1191,6 @@ String time_string_exp(long time) {
 	}
 	return strUpTime;
 } 
-
-/**
- * Fonction de calcul d'une somme de contrôle CRC-16 CCITT 0xFFFF
- */
-
-uint16_t crc16_ccitt(unsigned char* data, unsigned int data_len) {
-	uint16_t crc = 0xFFFF;
-	if (data_len == 0)
-	return 0;
-	for (unsigned int i = 0; i < data_len; ++i) {
-		uint16_t dbyte = data[i];
-		crc ^= dbyte << 8;
-		for (unsigned char j = 0; j < 8; ++j) {
-			uint16_t mix = crc & 0x8000;
-			crc = (crc << 1);
-			if (mix)
-				crc = crc ^ 0x1021;
-		}
-	}
-	return crc;
-}
 
 /**
  * RFLInk WiFi board
@@ -1506,10 +1489,12 @@ void loop() {
 					}	// authorized id
 				}	// for
 			} else {	// No ID filtering
-				if (MQTTClient.publish(MQTT_TOPIC,JSON,MQTT_RETAIN_FLAG)) {							// publish on MQTT server
-				} else {
-					DEBUG_PRINTLN(" => MQTT publish failed");
-				};
+				if ( (strcmp(MQTT_ID,"") != 0) && (strcmp(MQTT_ID,"0\0") != 0) ) {					// publish only if not a message from RFLink
+					if (MQTTClient.publish(MQTT_TOPIC,JSON,MQTT_RETAIN_FLAG)) {						// publish on MQTT server
+					} else {
+						DEBUG_PRINTLN(" => MQTT publish failed");
+					}
+				}
 			}
 			
 		} // end of DataReady

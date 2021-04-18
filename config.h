@@ -129,7 +129,7 @@ This table allows to configure default values for IDs that will be filtered on b
 };
 // Note: ID filtering configuration is now saved in eeprom memory and can be changed online in the /configuration page. This is very useful when a device changes ID in order to keep using the same MQTT topic. If changes are made online, the /configuration page provides directly the new code to update here.
 
-#define CONFIG_VERSION 20200430
+#define CONFIG_VERSION 20210418
 // Changing this number overwrites the configuration in eeprom memory with configuration in this file (config.h).
 // =====>>> In general to be safe, you should always update this number after making changes in this file <<<===== 
 
@@ -166,7 +166,7 @@ const char* const user_cmds[][2] = {			// These are predefined user commands to 
 //********************************************************************************
 
 // Uncomment following line if using this board in order to use watchdog functions
-#define RFLINK_WIFI_BOARD
+//#define RFLINK_WIFI_BOARD
 
 #ifdef RFLINK_WIFI_BOARD
   #define DEFAULT_PIN_I2C_SDA              4

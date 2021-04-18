@@ -87,10 +87,10 @@ const char* const PROGMEM RFLINK_FIELD_DECINT[] = {
 const char PROGMEM RFLINK_MQTT_NAME_DEBUG[]      = "DEBUG";
 const char PROGMEM RFLINK_MQTT_NAME_Debug[]      = "Debug";
 const char PROGMEM RFLINK_MQTT_NAME_OK[]         = "OK";
-const char PROGMEM RFLINK_MQTT_NAME_CMD_UNKNOWN[]= "CMD_UNKNOWN";
-const char PROGMEM RFLINK_MQTT_NAME_PONG[]       = "PONG";
 const char PROGMEM RFLINK_MQTT_NAME_BLE_DEBUG[]  = "BLE_DEBUG";
 const char PROGMEM RFLINK_MQTT_NAME_STATUS[]     = "STATUS";
+const char PROGMEM RFLINK_MQTT_NAME_CMD_UNKNOWN[]= "CMD_UNKNOWN";
+const char PROGMEM RFLINK_MQTT_NAME_PONG[]       = "PONG";
 const char PROGMEM RFLINK_MQTT_NAME_NODO[]       = "Nodo_RadioFrequencyLink";
 const char PROGMEM RFLINK_MQTT_NAME_PULLUP[]     = "Internal_Pullup_on_RF-in_disabled";
 const char* const PROGMEM RFLINK_MQTT_NAMES_NO_JSON[] = {
@@ -101,6 +101,7 @@ const char* const PROGMEM RFLINK_MQTT_NAMES_NO_JSON[] = {
         RFLINK_MQTT_NAME_STATUS,
         RFLINK_MQTT_NAME_CMD_UNKNOWN,
         RFLINK_MQTT_NAME_PONG,
+        RFLINK_MQTT_NAME_NODO,
         RFLINK_MQTT_NAME_PULLUP,
         "\0" // do not remove this mark the end of the array
 };

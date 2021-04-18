@@ -23,14 +23,14 @@ void readRfLinkPacket(char* line) {
 			LINE_NUMBER[0] = line[3];
 			LINE_NUMBER[1] = line[4];
 			LINE_NUMBER[2] = '\0';
-        #endif
+                #endif
 		
         // get name : 3rd field (begins at char 6)
         while(line[i] != ';' && i < BUFFER_SIZE && j < MAX_DATA_LEN) {
                 if      (line[i]==' ') MQTT_NAME[j] = '_';
                 else if (line[i]=='=')  { nameHasEq = true; break; }
                 else MQTT_NAME[j] = line[i];
-				if (line[i]=='-')  { nameHasDash = true; }			// to handle Internal_Pullup_on_RF-in_disabled (missing ";") to improve
+		if (line[i]=='-')  { nameHasDash = true; }
                 i++; j++;
         }
 
@@ -47,47 +47,48 @@ void readRfLinkPacket(char* line) {
                 readRfLinkFields(line, i);
                 return;
         }
-		
+
+        // if name contains "-", assumes that it's Internal_Pullup_on_RF-in_disabled message (; is missing at the end)
         if(nameHasDash==true) {
                 i = 6;
                 strcpy_P(MQTT_NAME,PSTR("message"));
                 MQTT_ID[0]='0'; MQTT_ID[1]='\0';
-				j=0;
-				while(line[i] != '\n' && i < BUFFER_SIZE && j < BUFFER_SIZE) {
-						JSON[j++] = line[i++];
-				}
-				JSON[j-1]='\0';
+                j=0;
+                while(line[i] != '\n' && i < BUFFER_SIZE && j < BUFFER_SIZE) {
+                        JSON[j++] = line[i++];
+                }
+                JSON[j-1]='\0';
                 return;
         }
-		
+	/*	
         if ( strcmp(MQTT_NAME,"STATUS") == 0){
           // Meldung STATUS
-          MQTT_ID[0]='0'; MQTT_ID[1]='\0';
+          MQTT_ID[0]='6'; MQTT_ID[1]='\0';
           i = 13;
           readRfLinkFields(line, i);
           return;
         }
-		
+	*/	
         if (strncmp_P(MQTT_NAME,RFLINK_MQTT_NAME_NODO,12) == 0)
         {
-			strcpy_P(MQTT_NAME,RFLINK_MQTT_NAME_NODO);
-			MQTT_ID[0]='0'; MQTT_ID[1]='\0';
-			//strcpy(JSON,line+6);
-			j=0;
-			i++; // Skip ;
-			while(line[i] != '\n' && i < BUFFER_SIZE && j < BUFFER_SIZE) {
-					JSON[j++] = line[i++];
-			}
-			JSON[j-1]='\0';
-			return;
+                strcpy_P(MQTT_NAME,PSTR("message"));
+                MQTT_ID[0]='0'; MQTT_ID[1]='\0';
+                j=0;
+                i=6; // Skip ;
+                while(line[i] != '\n' && i < BUFFER_SIZE && j < BUFFER_SIZE) {
+                                JSON[j++] = line[i++];
+                }
+                JSON[j-1]='\0';
+                return;
         }
-
+        
         // for debug and ACK messages, send them directly, no json convertion
         if(RfLinkIsStringInArray(MQTT_NAME,RFLINK_MQTT_NAMES_NO_JSON)) {
                 //Serial.println(F("Special name found => no JSON convertion"));
+                strcpy_P(MQTT_NAME,PSTR("message"));
                 MQTT_ID[0]='0'; MQTT_ID[1]='\0';
                 j=0;
-                i++; // Skip ;
+                i=6;
                 while(line[i] != '\n' && i < BUFFER_SIZE && j < BUFFER_SIZE) {
                         JSON[j++] = line[i++];
                 }
