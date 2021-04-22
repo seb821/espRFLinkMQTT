@@ -78,8 +78,10 @@ const char* const PROGMEM RFLINK_FIELD_HEXINT[] = {
 
 // list of fields with integer that must be converted to decimal integer
 const char PROGMEM RFLINK_FIELD_NAME_HUM[]        = "HUM";
+const char PROGMEM RFLINK_FIELD_NAME_WINDIR[]     = "WINDIR";
 const char* const PROGMEM RFLINK_FIELD_DECINT[] = {
         RFLINK_FIELD_NAME_HUM,
+        RFLINK_FIELD_NAME_WINDIR,
         "\0" // do not remove this mark the end of the array
 };
 
