@@ -56,7 +56,7 @@ typedef struct { 											// structure to store configuration in EEPROM memory
 	char			hostname[CFG_HOSTNAME_SIZE+1]; 		   	// Hostname
 	_mqtt			mqtt;                 					// MQTT configuration
 	int				mega_reset_pin;							// Pin to reset MEGA
-	unsigned long	resetMegaInterval;						// Auto reset MEGA
+	unsigned long	resetMegaInterval;						// Auto reset MEGA interval
 	bool			id_filtering;							// ID filtering enabled
 	_filtered_IDs 	filtered_id[FILTERED_ID_SIZE];
 	bool			settings_locked;						// Lock settings and block access point
@@ -67,7 +67,6 @@ typedef struct { 											// structure to store configuration in EEPROM memory
 // Structure for matrix 
 typedef struct { 											// structure for additionnal data when IP filtering is used
   char 				json[3*MAX_DATA_LEN]; 					// store last json message
-  //uint16_t 		json_checksum;							// store last json checksum
   unsigned long 	last_published;    						// store last published time (millis)
   unsigned long 	last_received;     						// store last received time (millis)
 } _matrix;

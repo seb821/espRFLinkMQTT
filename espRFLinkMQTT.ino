@@ -863,7 +863,7 @@ void ConfigHTTPserver() {
 		htmlMessage += "<tr><td>Settings</td><td>";
 		(eepromConfig.settings_locked)? htmlMessage += "<span style=\"font-weight:bold\">locked</span> | <a href='/unlock-settings' class='button link'>&#128275;&nbsp;Unlock&nbsp;settings</a> " : htmlMessage += "unlocked | <a href='/lock-settings' class='button link'>&#128274;&nbsp;Lock&nbsp;settings</a>";
 		htmlMessage += "</td></tr>\r\n";
-		htmlMessage += "<tr><td></td><td><div class='note'>Note: if locked, prevents changing accidentally WiFi, MEGA reset, MQTT and ID filtering settings ; blocks also WiFi access point startup (not necessary once WiFi credentials are setup).</div></td></tr>\r\n";
+		htmlMessage += "<tr><td></td><td><div class='note'>Note: if locked, prevents changing accidentally WiFi, MEGA reset, MQTT and ID filtering enabled settings. Please consider it also blocks WiFi access point startup (not necessary once WiFi credentials are setup).</div></td></tr>\r\n";
 		htmlMessage += "</table>\r\n";
 
 		// Tools
@@ -955,7 +955,8 @@ void ConfigHTTPserver() {
 			page = max((int) arg_page.toInt(),0);
 		};
 		if (httpserver.hasArg("save_configuration")) {
-			for (int i = 0+(16*page); i < min(filtered_id_number,16*(page+1)); i++){
+			//for (int i = 0+(16*page); i < min(filtered_id_number,16*(page+1)); i++){
+			for (int i = 0; i < filtered_id_number; i++){
 				if (httpserver.hasArg("id["+String(i)+"]")) {
 					String arg_id = httpserver.arg("id["+String(i)+"]");
 					String arg_id_applied = httpserver.arg("id_a["+String(i)+"]");
@@ -989,7 +990,7 @@ void ConfigHTTPserver() {
 				}
 				htmlMessage += "</h3><br>\r\n";
 			}
-			htmlMessage += "<div class='note'>Make changes in the table below and click on \"Apply configuration\". It can be tested immediately.<br>If OK, save configuration to permanent memory by clicking on \"Save to EEPROM\".<br>Tip: Leave an empty ID after last device. ID filtering comparison will stop there.</div><br>\r\n";
+			htmlMessage += "<div>Make changes in the table below and click on \"Apply configuration\". It can be tested immediately.<br>If OK, save configuration to permanent memory by clicking on \"Save to EEPROM\".<br>Tip: Leave an empty ID after last device. ID filtering comparison will stop there.</div><br>\r\n";
 
 			htmlMessage += "<form method='post' action='/idfiltering'><input type='hidden' name='page' value=" + String(page) + ">\r\n";
 			htmlMessage += "<input type='hidden' name='save_configuration' value='1'>";
@@ -1004,8 +1005,14 @@ void ConfigHTTPserver() {
 				htmlMessage += "<td></td></tr>\r\n";
 			}
 			htmlMessage += "</table><br><input type='submit' value='Apply configuration'></form><br>\r\n";
-			htmlMessage += "<a class='button link' href='/save-eeprom' onclick=\"fetchAndNotify('/save-eeprom');return false;\">Save to EEPROM</a> => After applying, this is to save configuration to persistent memory. Otherwise, changes will be lost on next reboot";  
-			htmlMessage += "<br><br><br><div style='font-size:0.8em;'>In case you compile your own firmware, you can update easily config.h file with current configuration using <a style='font-size:0.8em;' href='/config_h_code'>this code</a><div><br>\r\n";
+			htmlMessage += "<a class='button link' href='/save-eeprom' onclick=\"fetchAndNotify('/save-eeprom');return false;\">Save to EEPROM</a> => After applying, this is to save configuration to persistent memory. Otherwise, changes will be lost on next reboot<br><br>";  
+			htmlMessage += "<h3>Save and restore ID filtering configuration</h3><br>\r\n";
+			htmlMessage += "<div>There is no direct function but the following options are available\r\n<ul style='padding-left:2em;'>";
+			htmlMessage += "<li>In case you compile your own firmware, you can update config.h file with <a href='/idfiltering_config_h'>this code</a></li>\r\n";
+			htmlMessage += "<li>From a Linux environment in the same network, you can run this <a href='/idfiltering_restore_curl'>curl command</a></li>\r\n";
+			htmlMessage += "<li>From a browser in the same network, you can copy and paste the <a href='/idfiltering_restore_url'>url here</a></li>\r\n";
+			htmlMessage += "<li>Though it cannot be restored, you can save this <a href='/configuration.json'>json file</a></li>\r\n";
+			htmlMessage += "</ul></div><br>\r\n";
 		} else {
 			htmlMessage += "<h3>ID filtering is disabled *</h3><br>\r\n";
 			htmlMessage += "<div class='note'>* All received messages are forwarded to MQTT server ; see System tab to enable ID filtering.</div>\r\n";
@@ -1019,14 +1026,88 @@ void ConfigHTTPserver() {
 	});
 	
 
-	httpserver.on("/config_h_code",[](){									// Show code to update config.h
-		DEBUG_PRINTLN("Html page requested: /config_h_code");
+	httpserver.on("/idfiltering_config_h",[](){							// Show code to update config.h with current ID filtering configuration
+		DEBUG_PRINTLN("Html page requested: /idfiltering_config_h");
 		String htmlMessage = "<xmp id='code_config_h' style='font-size:0.9em;'>\r\n";
 		for (int i = 0; i < (filtered_id_number); i++){
-			String str_description = String(eepromConfig.filtered_id[i].description);     
+			String str_description = String(eepromConfig.filtered_id[i].description);
+			str_description.replace("\\","\\\\");str_description.replace("\"","\\\"");
 			htmlMessage += "	{\"" + String(eepromConfig.filtered_id[i].id) + "\",\"" + String(eepromConfig.filtered_id[i].id_applied) + "\"," + String(eepromConfig.filtered_id[i].publish_interval) + ",\"" + str_description + "\"},	// " + (i+1) + "\r\n";
 		}
 		htmlMessage += "</xmp>\r\n";
+		httpserver.send(200, "text/html", htmlMessage);
+	});
+
+	httpserver.on("/idfiltering_restore_curl",[](){						// Command to restore ID filtering configuration with curl
+		DEBUG_PRINTLN("Html page requested: /idfiltering_restore_curl");
+		String htmlMessage = "<xmp id='idfiltering_restore_curl' style='font-size:0.9em;'>";
+		htmlMessage += "curl -d \"";
+		for (int i = 0; i < (filtered_id_number); i++) {
+			if (String(eepromConfig.filtered_id[i].id) != "") {     
+				htmlMessage += "id[" + String(i) + "]=" + String(eepromConfig.filtered_id[i].id) + "&";
+				htmlMessage += "id_a[" + String(i) + "]=" + String(eepromConfig.filtered_id[i].id_applied) + "&";
+				htmlMessage += "d[" + String(i) + "]=" + urlencode(String(eepromConfig.filtered_id[i].description)) + "&";
+				htmlMessage += "pi[" + String(i) + "]=" + String(eepromConfig.filtered_id[i].publish_interval / 1000) + "& \\\r\n";
+			}
+		}
+		htmlMessage += "&save_configuration=1\" ";
+		htmlMessage += "-X POST http://" + WiFi.localIP().toString() + "/idfiltering";
+		htmlMessage += "</xmp>";
+		httpserver.send(200, "text/html", htmlMessage);
+	});
+
+	httpserver.on("/idfiltering_restore_url",[](){						// Url to restore ID filtering configuration from browser
+		DEBUG_PRINTLN("Html page requested: /idfiltering_restore_url");
+		String htmlMessage = "<xmp id='idfiltering_restore_url' style='font-size:0.9em;'>";
+		htmlMessage += "http://" + WiFi.localIP().toString() + "/idfiltering?";
+		for (int i = 0; i < (filtered_id_number); i++) {
+			if (String(eepromConfig.filtered_id[i].id) != "") {     
+				htmlMessage += "id[" + String(i) + "]=" + String(eepromConfig.filtered_id[i].id) + "&";
+				htmlMessage += "id_a[" + String(i) + "]=" + String(eepromConfig.filtered_id[i].id_applied) + "&";
+				htmlMessage += "d[" + String(i) + "]=" + urlencode(String(eepromConfig.filtered_id[i].description)) + "&";
+				htmlMessage += "pi[" + String(i) + "]=" + String(eepromConfig.filtered_id[i].publish_interval / 1000) + "&";
+			}
+		}
+		htmlMessage += "&save_configuration=1\"";
+		htmlMessage += "</xmp>";
+		httpserver.send(200, "text/html", htmlMessage);
+	});
+
+	httpserver.on("/configuration.json",[](){								// File to save configuration in json
+		DEBUG_PRINTLN("Html page requested: /configuration.json");
+		httpserver.sendHeader("Content-type", "application/json");
+		String htmlMessage = "{\r\n";
+		htmlMessage += "\"wifi\": {\r\n";
+		htmlMessage += " \"ssid\":\"" + String (eepromConfig.ssid) + "\",\r\n";
+		htmlMessage += " \"password\":\"" + String (eepromConfig.psk) + "\",\r\n";
+		htmlMessage += " \"hostname\":\"" + String (eepromConfig.hostname) + "\"\r\n";
+		htmlMessage += "}, \r\n";
+		htmlMessage += "\"mqtt\": {\r\n";
+		htmlMessage += " \"server\":\"" + String(eepromConfig.mqtt.server) + "\",\r\n";
+		htmlMessage += " \"user\":\"" + String(eepromConfig.mqtt.user) + "\",\r\n";
+		htmlMessage += " \"password\":\"" + String(eepromConfig.mqtt.password) + "\",\r\n";
+		htmlMessage += " \"port\":" + String(eepromConfig.mqtt.port) + "\r\n";
+		htmlMessage += "}, \r\n";
+		htmlMessage += "\"mega_reset_pin\":" + String (eepromConfig.mega_reset_pin) + ",\r\n";
+		htmlMessage += "\"resetMegaInterval\":" + String (eepromConfig.resetMegaInterval) + ",\r\n";
+		htmlMessage += "\"id_filtering\":" + String (eepromConfig.id_filtering) + ",\r\n";
+		htmlMessage += "\"filtered_id\": [ \r\n";
+		for (int i = 0; i < (filtered_id_number); i++) {
+			if (String(eepromConfig.filtered_id[i].id) != "") {
+				htmlMessage += " {";
+				htmlMessage += "\"id\":\"" + String(eepromConfig.filtered_id[i].id) + "\", ";
+				htmlMessage += "\"id_applied\":\"" + String(eepromConfig.filtered_id[i].id_applied) + "\", ";
+				htmlMessage += "\"publish_interval\":" + String(eepromConfig.filtered_id[i].publish_interval) + ", ";
+				String str_description = String(eepromConfig.filtered_id[i].description);
+				str_description.replace("\\","\\\\");str_description.replace("\"","\\\"");
+				htmlMessage += "\"description\":\"" + str_description + "\"";
+				htmlMessage += "},\r\n";
+			}
+		}
+		htmlMessage += " {} ], \r\n";
+		htmlMessage += "\"settings_locked\":" + String (eepromConfig.settings_locked) + ",\r\n";
+		htmlMessage += "\"version\":" + String (eepromConfig.version) + "\r\n";
+		htmlMessage += "}\r\n";
 		httpserver.send(200, "text/html", htmlMessage);
 	});
 
@@ -1191,6 +1272,38 @@ String time_string_exp(long time) {
 	}
 	return strUpTime;
 } 
+
+String urlencode(String str)
+{
+    String encodedString="";
+    char c;
+    char code0;
+    char code1;
+    for (uint i = 0; i < str.length(); i++){
+      c=str.charAt(i);
+      if (c == ' '){
+        encodedString+= '+';
+      } else if (isalnum(c)){
+        encodedString+=c;
+      } else{
+        code1=(c & 0xf)+'0';
+        if ((c & 0xf) >9){
+            code1=(c & 0xf) - 10 + 'A';
+        }
+        c=(c>>4)&0xf;
+        code0=c+'0';
+        if (c > 9){
+            code0=c - 10 + 'A';
+        }
+        encodedString+='%';
+        encodedString+=code0;
+        encodedString+=code1;
+      }
+      yield();
+    }
+    return encodedString;
+    
+}
 
 /**
  * RFLInk WiFi board
