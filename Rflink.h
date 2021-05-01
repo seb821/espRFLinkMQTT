@@ -6,7 +6,7 @@
 #define MAX_DATA_LEN 24                         // Maximum size for record name, json field name and json field value
 #define MAX_TOPIC_LEN 60                        // Maximum topic path size (at least lenght of MQTT_PUBLISH_TOPIC + 2 x MAX_DATA_LEN)
 
-#include <Arduino.h>
+#include <Arduino.h> 
 
 //********************************************************************************
 // RFLink settings

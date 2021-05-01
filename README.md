@@ -120,3 +120,4 @@ The following capabilities were added:
 - Lock settings option
 - Publish WiFi RSSI along with uptime
 - RFLink WiFi board whatchdog support
+- Options to export ID filtering configuration
