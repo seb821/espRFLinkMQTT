@@ -2,41 +2,43 @@
 #define H_RFLINK
 
 #define BUFFER_SIZE 200                         // Maximum size of one serial line and json content
-#define MAX_ID_LEN 12                         	// Maximum size for record name, record id, json field name and json field value
-#define MAX_DATA_LEN 24                         // Maximum size for record name, record id, json field name and json field value
+#define MAX_ID_LEN 10                         	// Maximum size for record id
+#define MAX_DATA_LEN 24                         // Maximum size for record name, json field name and json field value
 #define MAX_TOPIC_LEN 60                        // Maximum topic path size (at least lenght of MQTT_PUBLISH_TOPIC + 2 x MAX_DATA_LEN)
 
 #include <Arduino.h>
 
-/*********************************************************************************
- * RFLink settings
-/*********************************************************************************/
+//********************************************************************************
+// RFLink settings
+//********************************************************************************
 
 // if less than that, rflink line will be ignored
 #define RFLINK_PACKET_MIN_SIZE 8
 
 // Rflink value type tags
-#define RFLINK_VALUE_TYPE_HEX_INTEGER     0
-#define RFLINK_VALUE_TYPE_STRING      1
-#define RFLINK_VALUE_TYPE_FLOAT_NEG   2
-#define RFLINK_VALUE_TYPE_FLOAT       3
-#define RFLINK_VALUE_TYPE_RAWVAL      4
-#define RFLINK_VALUE_TYPE_DEC_INTEGER     5
+#define RFLINK_VALUE_TYPE_HEX_INTEGER     	0
+#define RFLINK_VALUE_TYPE_STRING      		1
+#define RFLINK_VALUE_TYPE_FLOAT_NEG   		2
+#define RFLINK_VALUE_TYPE_FLOAT       		3
+#define RFLINK_VALUE_TYPE_RAWVAL      		4
+#define RFLINK_VALUE_TYPE_DEC_INTEGER     	5
 
 
 // main input / output buffers
-extern char BUFFER [BUFFER_SIZE];
+//extern char BUFFER [BUFFER_SIZE];
 extern char JSON   [BUFFER_SIZE];
 
 // message builder buffers
 extern char MQTT_NAME[MAX_DATA_LEN];
-extern char MQTT_ID  [MAX_ID_LEN];
+extern char MQTT_ID  [MAX_ID_LEN+1];
 extern char FIELD_BUF[MAX_DATA_LEN];
+#ifdef EXPERIMENTAL
+	extern char LINE_NUMBER[3]; // TEST
+#endif
 
-
-/*********************************************************************************
- * const strings used in helper functions
-/*********************************************************************************/
+//********************************************************************************
+// const strings used in helper functions
+//********************************************************************************
 // list of fields that must be quoted in JSON convertion
 const char PROGMEM RFLINK_FIELD_NAME_CMD[]         = "CMD";
 const char PROGMEM RFLINK_FIELD_NAME_BAT[]         = "BAT";
@@ -76,8 +78,10 @@ const char* const PROGMEM RFLINK_FIELD_HEXINT[] = {
 
 // list of fields with integer that must be converted to decimal integer
 const char PROGMEM RFLINK_FIELD_NAME_HUM[]        = "HUM";
+const char PROGMEM RFLINK_FIELD_NAME_WINDIR[]     = "WINDIR";
 const char* const PROGMEM RFLINK_FIELD_DECINT[] = {
         RFLINK_FIELD_NAME_HUM,
+        RFLINK_FIELD_NAME_WINDIR,
         "\0" // do not remove this mark the end of the array
 };
 
@@ -85,10 +89,10 @@ const char* const PROGMEM RFLINK_FIELD_DECINT[] = {
 const char PROGMEM RFLINK_MQTT_NAME_DEBUG[]      = "DEBUG";
 const char PROGMEM RFLINK_MQTT_NAME_Debug[]      = "Debug";
 const char PROGMEM RFLINK_MQTT_NAME_OK[]         = "OK";
-const char PROGMEM RFLINK_MQTT_NAME_CMD_UNKNOWN[]= "CMD_UNKNOWN";
-const char PROGMEM RFLINK_MQTT_NAME_PONG[]       = "PONG";
 const char PROGMEM RFLINK_MQTT_NAME_BLE_DEBUG[]  = "BLE_DEBUG";
 const char PROGMEM RFLINK_MQTT_NAME_STATUS[]     = "STATUS";
+const char PROGMEM RFLINK_MQTT_NAME_CMD_UNKNOWN[]= "CMD_UNKNOWN";
+const char PROGMEM RFLINK_MQTT_NAME_PONG[]       = "PONG";
 const char PROGMEM RFLINK_MQTT_NAME_NODO[]       = "Nodo_RadioFrequencyLink";
 const char PROGMEM RFLINK_MQTT_NAME_PULLUP[]     = "Internal_Pullup_on_RF-in_disabled";
 const char* const PROGMEM RFLINK_MQTT_NAMES_NO_JSON[] = {
@@ -99,6 +103,7 @@ const char* const PROGMEM RFLINK_MQTT_NAMES_NO_JSON[] = {
         RFLINK_MQTT_NAME_STATUS,
         RFLINK_MQTT_NAME_CMD_UNKNOWN,
         RFLINK_MQTT_NAME_PONG,
+        RFLINK_MQTT_NAME_NODO,
         RFLINK_MQTT_NAME_PULLUP,
         "\0" // do not remove this mark the end of the array
 };
@@ -133,9 +138,9 @@ const char* const PROGMEM RFLINK_FIELD_HEXFLOAT10[] = {
 };
 
 
-/*********************************************************************************
- * RFLink functions
-/*********************************************************************************/
+//********************************************************************************
+//* RFLink functions
+//********************************************************************************
 void readRfLinkPacket(char* line);
 void readRfLinkFields(char* fields, int start);
 
