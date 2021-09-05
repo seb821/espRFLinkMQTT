@@ -1259,7 +1259,16 @@ void ConfigHTTPserver() {
 		htmlMessage += "  xhttp.send();\r\n";
 		htmlMessage += "}\r\n";
     htmlMessage += "function rtsClear(line) {\r\n";
-    htmlMessage += "  alert('Clearing RTS Line '+line); \r\n";
+    htmlMessage += "  if (confirm('Are you sure you want to clear Record '+line+'?')) { \r\n";
+    htmlMessage += "    var xhttp = new XMLHttpRequest();\r\n";
+		htmlMessage += "    xhttp.onreadystatechange = function(){\r\n";
+		htmlMessage += "      if(this.readyState == 4 && this.status == 200){\r\n";
+		htmlMessage += "         rtsUpdate();\r\n";
+		htmlMessage += "      }\r\n";
+		htmlMessage += "    };\r\n";
+		htmlMessage += "    xhttp.open(\"GET\", '/rts-clear?line='+(line+1), true);\r\n";
+		htmlMessage += "    xhttp.send();\r\n";
+		htmlMessage += "  }\r\n";
 		htmlMessage += "}\r\n";
     htmlMessage += "</script>";
 
@@ -1274,6 +1283,7 @@ void ConfigHTTPserver() {
 
 		httpserver.send(200, "text/html", htmlMessage);
 	});
+
 
 httpserver.on("/rts-show",[](){	// URL to return RTS Show Data as a number of HTML Table Rows
     String htmlMessage = "";
@@ -1351,6 +1361,34 @@ httpserver.on("/rts-show",[](){	// URL to return RTS Show Data as a number of HT
     *BUFFER = '\0';
 
 		httpserver.send(200, "text/html", htmlMessage);
+	});
+
+httpserver.on("/rts-clear",[](){	// URL to return RTS Show Data as a number of HTML Table Rows
+    String htmlMessage = "";
+    // PArso the 'line' arg (1-16)
+    long line_to_clear = 0;
+	  if (httpserver.args() > 0 ) {
+			for ( uint8_t i = 0; i < httpserver.args(); i++ ) {
+				if (httpserver.argName(i) == "line") {             // Send command to RFLInk from web interface, check it comes from command input in html form
+					 String line = httpserver.arg(i);  
+           line_to_clear = line.toInt();
+        }
+      }
+    }
+    // If no line was send, return error
+    if(line_to_clear <= 0 || line_to_clear > 16) {
+      httpserver.send(400, "text/plain", "Invalid Parameter");
+      return;
+    }
+    
+    String cmd = "10;RTSRECCLEAN=";
+    // RTS Lines in RFLINK are from 0-15, but the args passed here are 1-16
+    cmd += (line_to_clear - 1);
+    rflinkSerialTX.print(cmd);
+  	rflinkSerialTX.print(F("\r\n"));
+    htmlMessage += "Cleared Line ";
+    htmlMessage += line_to_clear;
+		httpserver.send(200, "text/plain", htmlMessage);
 	});
 
   httpserver.onNotFound([](){
