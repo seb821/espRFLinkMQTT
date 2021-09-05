@@ -1248,6 +1248,7 @@ void ConfigHTTPserver() {
     htmlMessage += " document.getElementById('rtsshow').innerHTML = data;\r\n";
     htmlMessage += "}\r\n";
     htmlMessage += "function rtsUpdate() {\r\n";
+    htmlMessage += "  document.getElementById('rtsshow').innerHTML = ''\r\n";
     htmlMessage += "  var xhttp = new XMLHttpRequest();\r\n";
 		htmlMessage += "  xhttp.onreadystatechange = function(){\r\n";
 		htmlMessage += "    if(this.readyState == 4 && this.status == 200){\r\n";
@@ -1257,12 +1258,15 @@ void ConfigHTTPserver() {
 		htmlMessage += "  xhttp.open(\"GET\", '/rts-show', true);\r\n";
 		htmlMessage += "  xhttp.send();\r\n";
 		htmlMessage += "}\r\n";
+    htmlMessage += "function rtsClear(line) {\r\n";
+    htmlMessage += "  alert('Clearing RTS Line '+line); \r\n";
+		htmlMessage += "}\r\n";
     htmlMessage += "</script>";
 
     // ;
 		htmlMessage += "<h3>RTS</h3>";
     htmlMessage += "<input type='button' value='&#128260 Refresh' onclick='rtsUpdate();'>";
-    htmlMessage += "<table class='multirow multirow-left'><tr class='header'><th class='t-left'>Record</th></tr><tbody id='rtsshow'></tbody></table>";
+    htmlMessage += "<table class='multirow' style='width:auto;'><tr class='header'><th>Record</th><th>RTS Code</th><th>Rolling Code</th><th></th></tr><tbody id='rtsshow'></tbody></table>";
     
 
     // Page end
@@ -1289,11 +1293,6 @@ httpserver.on("/rts-show",[](){	// URL to return RTS Show Data as a number of HT
           return;
         }
       }
-
-      htmlMessage += "<tr id='data";
-      htmlMessage += i;
-      htmlMessage += "'><td>";
-      htmlMessage += BUFFER;
 
       // Need to do some character buffer parsing here.. should not use Strings...
       // Process the line..."RTS Record: <rec_id> Address: <rts_code> RC: <rts_rc>\0"      
@@ -1333,12 +1332,19 @@ httpserver.on("/rts-show",[](){	// URL to return RTS Show Data as a number of HT
         curr++; // Next character
       }
       
+      htmlMessage += "<tr id='data";
+      htmlMessage += i;
+      htmlMessage += "'><td>";
       htmlMessage += String(line_nr);
-      htmlMessage += ",";
+      htmlMessage += "</td><td>";
       htmlMessage += String(rts_code);
-      htmlMessage += ",";
+      htmlMessage += "</td><td>";
       htmlMessage += String(rts_rc);
-      htmlMessage += "</td></tr>";
+      htmlMessage += "</td><td>";
+      htmlMessage += "<input type='button' value='clear' onclick='rtsClear(";
+      htmlMessage += i;
+      htmlMessage += ")'>";
+      htmlMessage += "</td></tr>";      
     }
 
     // Clear the buffer
