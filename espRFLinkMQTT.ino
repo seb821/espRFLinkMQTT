@@ -1249,7 +1249,7 @@ void ConfigHTTPserver() {
     htmlMessage += "  var xhttp = new XMLHttpRequest();\r\n";
 		htmlMessage += "  xhttp.onreadystatechange = function(){\r\n";
 		htmlMessage += "    if(this.readyState == 4 && this.status == 200){\r\n";
-		htmlMessage += "       alert(this);\r\n";
+		// htmlMessage += "       alert(this);\r\n";
 		htmlMessage += "       rtsCallback(this.response);\r\n";
 		htmlMessage += "    }\r\n";
 		htmlMessage += "  };\r\n";
@@ -1261,7 +1261,7 @@ void ConfigHTTPserver() {
     // ;
 		htmlMessage += "<h3>RTS</h3>";
     htmlMessage += "<input type='button' value='&#128260 Refresh' onclick='rtsUpdate();'>";
-    htmlMessage += "<table class='multirow multirow-left'><tr class='header'><th class='t-left'>Record</th><th class='t-left'>Address</th><th class='t-left'>RC</th></tr><tbody id='rtsshow'></tbody></table>";
+    htmlMessage += "<table class='multirow multirow-left'><tr class='header'><th class='t-left'>Record</th></tr><tbody id='rtsshow'></tbody></table>";
     
 
     // Page end
@@ -1272,11 +1272,27 @@ void ConfigHTTPserver() {
 
 httpserver.on("/rts-show",[](){						// Url to restore ID filtering configuration from browser
     String htmlMessage = "";
-    htmlMessage += "<tr id='data0'><td>0</td><td>0x1263fbb3</td><td>12</td></tr>";
-    htmlMessage += "<tr id='data1'><td>1</td><td></td><td></td></tr>";
-    htmlMessage += "<tr id='data2'><td>2</td><td></td><td></td></tr>";
-    htmlMessage += "<tr id='data3'><td>3</td><td></td><td></td></tr>";
-    
+    rflinkSerialTX.write("10;RTSSHOW;");
+  	rflinkSerialTX.print(F("\r\n"));
+    for (int i=0; i<16; i++) {
+      int count = 50;
+      while (!read_data_if_ready()) {
+        delay(10);
+        count--;
+        if(count == 0) {
+          htmlMessage += "\r\nerror ";
+          htmlMessage += i;
+          httpserver.send(400, "text/plain", htmlMessage);
+          return;
+        }
+      }
+      htmlMessage += "<tr id='data";
+      htmlMessage += i;
+      htmlMessage += "'><td>";
+      htmlMessage += BUFFER;
+      htmlMessage += "</td></tr>";
+    }
+
 		httpserver.send(200, "text/html", htmlMessage);
 	});
 
@@ -1495,26 +1511,13 @@ void setup() {
 //********************************************************************************
 
 bool read_data_if_ready() {
-	bool DataReady=false;
   // if something arrives from rflink
   if(rflinkSerialRX.available()) {
-    char rc;
-    // bufferize serial message
-    while(rflinkSerialRX.available() && CPT < BUFFER_SIZE) {
-      rc = rflinkSerialRX.read();
-      if (isAscii(rc)) { // ensure char is ascii, this is to stop bad chars being sent https://www.arduino.cc/en/Tutorial/CharacterAnalysis
-        BUFFER[CPT] = rc;
-        CPT++;
-        if (BUFFER[CPT-1] == '\n') {
-          DataReady = true;
-          BUFFER[CPT]='\0';
-          CPT=0;
-        }
-      }
-    }
-    if (CPT > BUFFER_SIZE ) CPT=0;
+    memset(BUFFER, 0x00, BUFFER_SIZE);
+    rflinkSerialRX.readBytesUntil('\n', BUFFER, BUFFER_SIZE);
+    return true;
   }
-  return DataReady;
+  return false;
 }
 
 void loop() {
