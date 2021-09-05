@@ -1289,12 +1289,60 @@ httpserver.on("/rts-show",[](){	// URL to return RTS Show Data as a number of HT
           return;
         }
       }
+
       htmlMessage += "<tr id='data";
       htmlMessage += i;
       htmlMessage += "'><td>";
       htmlMessage += BUFFER;
+
+      // Need to do some character buffer parsing here.. should not use Strings...
+      // Process the line..."RTS Record: <rec_id> Address: <rts_code> RC: <rts_rc>\0"      
+      // this will create small zero terminated strings in the buffer with pointers to each
+      // bit of info we need..
+      // The line will end up looking like this: 
+      // "RTS Record: <rec_id>\0Address: <rts_code>\0RC: <rts_rc>\0"   
+      // with pointers to each part of the data..   
+      bool skipping = false; // Skipping means we are looking for the start of the next piece of data, false means we are in a piece of data
+      char *line_nr = BUFFER + 12; // location of the line number
+      char *curr = line_nr; // and scan from here
+      char *rts_code = NULL;
+      char *rts_rc = NULL;
+      // While we don;t have rc set..
+      while (!rts_rc) {
+        // Are we in a piece of data?
+        if (!skipping) {
+          // did we get to a 'space'?
+          if (*curr == ' ') {
+            // yes! a space, drop a '0' to terminate the string, and move to the next character
+            *curr = '\0';
+            skipping = true;
+          } // if not just move along..
+        } else {
+          // We are in search of a ' '
+          if (*curr == ' ') {
+            // Yes a space, so point the next data pointer to the byte after this one..
+            curr++;
+            if(!rts_code) // If we dont; have an rts_code pointer yet..
+              rts_code = curr; // set it
+            else {
+              rts_rc = curr; // Otherwise we are now looking at rts_rc
+            }
+            skipping = false;
+          }
+        }
+        curr++; // Next character
+      }
+      
+      htmlMessage += String(line_nr);
+      htmlMessage += ",";
+      htmlMessage += String(rts_code);
+      htmlMessage += ",";
+      htmlMessage += String(rts_rc);
       htmlMessage += "</td></tr>";
     }
+
+    // Clear the buffer
+    *BUFFER = '\0';
 
 		httpserver.send(200, "text/html", htmlMessage);
 	});
