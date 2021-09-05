@@ -1238,8 +1238,10 @@ void ConfigHTTPserver() {
 		// Header + menu
 		htmlMessage += FPSTR(htmlMenu);
 		htmlMessage += "<script>\r\n";
-		if (!MQTTClient.connected()) {
-			htmlMessage += "window.onload = function() { document.getElementById('menunotification').innerHTML = 'Warning: MQTT not connected !';};\r\n"; };
+		if (!MQTTClient.connected()) 
+			htmlMessage += "window.onload = function() { document.getElementById('menunotification').innerHTML = 'Warning: MQTT not connected !'; rtsUpdate();};\r\n"; 
+    else
+			htmlMessage += "window.onload = function() { rtsUpdate();};\r\n";
 		htmlMessage += "document.getElementById('menurts').classList.add('active');</script>";
     htmlMessage += "<script>\r\n";
     htmlMessage += "function rtsCallback(data) {\r\n";
