@@ -1229,6 +1229,57 @@ void ConfigHTTPserver() {
 		//httpserver.send(303);
 	});
 	#endif
+
+  httpserver.on("/rts",[](){						// Url to restore ID filtering configuration from browser
+    String htmlMessage = "";
+		// Page start
+		htmlMessage += FPSTR(htmlStart);
+
+		// Header + menu
+		htmlMessage += FPSTR(htmlMenu);
+		htmlMessage += "<script>\r\n";
+		if (!MQTTClient.connected()) {
+			htmlMessage += "window.onload = function() { document.getElementById('menunotification').innerHTML = 'Warning: MQTT not connected !';};\r\n"; };
+		htmlMessage += "document.getElementById('menurts').classList.add('active');</script>";
+    htmlMessage += "<script>\r\n";
+    htmlMessage += "function rtsCallback(data) {\r\n";
+    htmlMessage += " document.getElementById('rtsshow').innerHTML = data;\r\n";
+    htmlMessage += "}\r\n";
+    htmlMessage += "function rtsUpdate() {\r\n";
+    htmlMessage += "  var xhttp = new XMLHttpRequest();\r\n";
+		htmlMessage += "  xhttp.onreadystatechange = function(){\r\n";
+		htmlMessage += "    if(this.readyState == 4 && this.status == 200){\r\n";
+		htmlMessage += "       alert(this);\r\n";
+		htmlMessage += "       rtsCallback(this.response);\r\n";
+		htmlMessage += "    }\r\n";
+		htmlMessage += "  };\r\n";
+		htmlMessage += "  xhttp.open(\"GET\", '/rts-show', true);\r\n";
+		htmlMessage += "  xhttp.send();\r\n";
+		htmlMessage += "}\r\n";
+    htmlMessage += "</script>";
+
+    // ;
+		htmlMessage += "<h3>RTS</h3>";
+    htmlMessage += "<input type='button' value='&#128260 Refresh' onclick='rtsUpdate();'>";
+    htmlMessage += "<table class='multirow multirow-left'><tr class='header'><th class='t-left'>Record</th><th class='t-left'>Address</th><th class='t-left'>RC</th></tr><tbody id='rtsshow'></tbody></table>";
+    
+
+    // Page end
+		htmlMessage += FPSTR(htmlEnd);
+
+		httpserver.send(200, "text/html", htmlMessage);
+	});
+
+httpserver.on("/rts-show",[](){						// Url to restore ID filtering configuration from browser
+    String htmlMessage = "";
+    htmlMessage += "<tr id='data0'><td>0</td><td>0x1263fbb3</td><td>12</td></tr>";
+    htmlMessage += "<tr id='data1'><td>1</td><td></td><td></td></tr>";
+    htmlMessage += "<tr id='data2'><td>2</td><td></td><td></td></tr>";
+    htmlMessage += "<tr id='data3'><td>3</td><td></td><td></td></tr>";
+    
+		httpserver.send(200, "text/html", htmlMessage);
+	});
+
  
   httpserver.onNotFound([](){
     httpserver.send(404, "text/plain", "404: Not found");      	// Send HTTP status 404 (Not Found) when there's no handler for the URI in the request

@@ -156,6 +156,7 @@ static const char htmlMenu[] PROGMEM = ""     // Menu
 	"<a id='menuhome' class='menu' href='.'>&#8962;<span class='showmenulabel'>Home</span></a>\r\n"
 	"<a id='menuid' class='menu' href='/idfiltering'>&#10740;<span class='showmenulabel'>ID Filtering</span></a>\r\n"
 	"<a id='menulivedata' class='menu' href='/livedata'>&#128172;<span class='showmenulabel'>Live Data</span></a>\r\n"
+  "<a id='menurts' class='menu' href='/rts'>&#128272;<span class='showmenulabel'>RTS</span></a>\r\n"
 	"<a id='menusystem' class='menu' href='/system'>&#128295;<span class='showmenulabel'>System</span></a>\r\n"
 	"</div>\r\n"
 	"</header>\r\n"
