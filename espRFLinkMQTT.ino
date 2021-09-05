@@ -1494,9 +1494,30 @@ void setup() {
 // Main loop
 //********************************************************************************
 
-void loop() {
-
+bool read_data_if_ready() {
 	bool DataReady=false;
+  // if something arrives from rflink
+  if(rflinkSerialRX.available()) {
+    char rc;
+    // bufferize serial message
+    while(rflinkSerialRX.available() && CPT < BUFFER_SIZE) {
+      rc = rflinkSerialRX.read();
+      if (isAscii(rc)) { // ensure char is ascii, this is to stop bad chars being sent https://www.arduino.cc/en/Tutorial/CharacterAnalysis
+        BUFFER[CPT] = rc;
+        CPT++;
+        if (BUFFER[CPT-1] == '\n') {
+          DataReady = true;
+          BUFFER[CPT]='\0';
+          CPT=0;
+        }
+      }
+    }
+    if (CPT > BUFFER_SIZE ) CPT=0;
+  }
+  return DataReady;
+}
+
+void loop() {
 
 	now = millis();
 	
@@ -1513,26 +1534,8 @@ void loop() {
 			mqttConnect();
 		}
 	}// else {
-		// if something arrives from rflink
-		if(rflinkSerialRX.available()) {
-			char rc;
-			// bufferize serial message
-			while(rflinkSerialRX.available() && CPT < BUFFER_SIZE) {
-				rc = rflinkSerialRX.read();
-				if (isAscii(rc)) { // ensure char is ascii, this is to stop bad chars being sent https://www.arduino.cc/en/Tutorial/CharacterAnalysis
-					BUFFER[CPT] = rc;
-					CPT++;
-					if (BUFFER[CPT-1] == '\n') {
-						DataReady = true;
-						BUFFER[CPT]='\0';
-						CPT=0;
-					}
-				}
-			}
-			if (CPT > BUFFER_SIZE ) CPT=0;
-		}
 		// parse what we just read
-		if (DataReady) {
+		if (read_data_if_ready()) {
 			
 			// clean variables
 			strcpy(MQTT_ID,""); strcpy(MQTT_NAME,"");strcpy(MQTT_TOPIC,"");strcpy(JSON,"");
