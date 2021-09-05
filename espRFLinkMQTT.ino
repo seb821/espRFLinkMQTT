@@ -1249,7 +1249,6 @@ void ConfigHTTPserver() {
     htmlMessage += "  var xhttp = new XMLHttpRequest();\r\n";
 		htmlMessage += "  xhttp.onreadystatechange = function(){\r\n";
 		htmlMessage += "    if(this.readyState == 4 && this.status == 200){\r\n";
-		// htmlMessage += "       alert(this);\r\n";
 		htmlMessage += "       rtsCallback(this.response);\r\n";
 		htmlMessage += "    }\r\n";
 		htmlMessage += "  };\r\n";
@@ -1270,7 +1269,7 @@ void ConfigHTTPserver() {
 		httpserver.send(200, "text/html", htmlMessage);
 	});
 
-httpserver.on("/rts-show",[](){						// Url to restore ID filtering configuration from browser
+httpserver.on("/rts-show",[](){	// URL to return RTS Show Data as a number of HTML Table Rows
     String htmlMessage = "";
     rflinkSerialTX.write("10;RTSSHOW;");
   	rflinkSerialTX.print(F("\r\n"));
@@ -1280,9 +1279,11 @@ httpserver.on("/rts-show",[](){						// Url to restore ID filtering configuratio
         delay(10);
         count--;
         if(count == 0) {
-          htmlMessage += "\r\nerror ";
-          htmlMessage += i;
-          httpserver.send(400, "text/plain", htmlMessage);
+          String err = "\r\nError Receiving RTSSHOW Response. We got to line ";
+          err += (i+1);
+          err += " of 16. Here is what we did receive:";
+          err += htmlMessage;
+          httpserver.send(500, "text/plain", err);
           return;
         }
       }
@@ -1296,7 +1297,6 @@ httpserver.on("/rts-show",[](){						// Url to restore ID filtering configuratio
 		httpserver.send(200, "text/html", htmlMessage);
 	});
 
- 
   httpserver.onNotFound([](){
     httpserver.send(404, "text/plain", "404: Not found");      	// Send HTTP status 404 (Not Found) when there's no handler for the URI in the request
   });
