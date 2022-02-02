@@ -279,6 +279,7 @@ boolean mqttConnect() {
 	// Connect to MQTT broker 
 	if (MQTTClient.connect(clientId, eepromConfig.mqtt.user, eepromConfig.mqtt.password, MQTT_WILL_TOPIC, 0, 1, MQTT_WILL_OFFLINE,1)) {
 		MQTTClient.subscribe(MQTT_RFLINK_CMD_TOPIC);				// subcribe to cmd topic
+    MQTTClient.subscribe(MQTT_RFLINK_CMD_DOMOTICZ_TOPIC);        // subcribe to Domoticz out topic
 		MQTTClient.publish(MQTT_WILL_TOPIC,MQTT_WILL_ONLINE,1);		// once connected, update status of will topic
 	}
 	// Report MQTT status
@@ -1582,7 +1583,12 @@ void loop() {
 								matrix[i].last_published = millis();							// memorize published time
 							} else {
 								DEBUG_PRINTLN(" => MQTT publish failed");
-							};	
+							};
+              if (MQTTClient.publish(MQTT_PUBLISH_DOMOTICZ_TOPIC,BUFFER,MQTT_RETAIN_FLAG)) {     // data changed, publish RAW data on MQTT server
+                //matrix[i].last_published = millis();              // memorize published time
+              } else {
+                DEBUG_PRINTLN(" => MQTT RAW data publish failed");
+              };                	
 							strncpy(matrix[i].json,JSON,sizeof(matrix[i].json)-2);				// memorize new json value
 							//matrix[i].json_checksum = json_checksum;							// memorize new json_checksum
 						} else {																// no data change
@@ -1594,6 +1600,11 @@ void loop() {
 								} else {
 									DEBUG_PRINTLN(" => MQTT publish failed");
 								}
+              if (MQTTClient.publish(MQTT_PUBLISH_DOMOTICZ_TOPIC,BUFFER,MQTT_RETAIN_FLAG)) {     // data changed, publish RAW data on MQTT server
+                //matrix[i].last_published = millis();              // memorize published time
+              } else {
+                DEBUG_PRINTLN(" => MQTT RAW data publish failed");
+              };                
 							} else {
 								DEBUG_PRINTLN(" => no data change => not published");
 							}
@@ -1607,6 +1618,10 @@ void loop() {
 					} else {
 						DEBUG_PRINTLN(" => MQTT publish failed");
 					}
+          if (MQTTClient.publish(MQTT_PUBLISH_DOMOTICZ_TOPIC,BUFFER,MQTT_RETAIN_FLAG)) {     // data changed, publish RAW data on MQTT server
+          } else {
+                DEBUG_PRINTLN(" => MQTT RAW data publish failed");
+          };          
 				}
 			}
 			
