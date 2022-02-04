@@ -22,7 +22,7 @@ RFLink-Hardware is required, official or DIY. For software, there are two option
 
 ### 1. Use already compiled firmware
 
-- Download firmware (.bin file)
+- Download firmware (.bin file) - file located in bin directory for: Wemos D1 mini pro or generic esp8266 (ex. ESP01) module
 - Upload firmware to ESP and reset
 - Wait for 1 minute
 - Connect to Wifi network espRFLinkMQTT
