@@ -73,6 +73,14 @@ If defined (line uncommented):
 
 #define MQTT_MEGA_RESET_TOPIC "rflink/mega_reset"	// MQTT topic whereto publish a 1s pulse when resetting RFLink Mega
 
+/*********************************************************************************
+ * TCP Bridge parameters
+/*********************************************************************************/
+const int tcp_port = 23;
+
+#ifndef TCP_BRIDGE_CONNECTIONS
+#define TCP_BRIDGE_CONNECTIONS 2    // number of maximum parallel connections
+#endif
 
 //********************************************************************************
 // ID filtering
