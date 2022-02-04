@@ -6,7 +6,9 @@ It's compatible wiht Domoticz 2022.1 RFLink MQTT hardware
 It includes the following main functions:
 
 - Receive data from RFLink board and forward to MQTT server in JSON and RAW format (separate topics) 
+- Receive data from RFLink board and forward to RAW format to TCP socket
 - Receive commands from MQTT server and forward to RFLink board
+- Receive commands from TCP socket and forward to RFLink board
 - Perform conversions so that data on MQTT server can be used directly (hexadecimal to decimal for example)
 - See data directly in web interface, send commands, change settings
 - Configure which IDs should be filtered and sent to MQTT server
@@ -123,4 +125,4 @@ The following capabilities were added:
 - Publish WiFi RSSI along with uptime
 - RFLink WiFi board whatchdog support
 - Options to export ID filtering configuration
-- Compatibility with Domoticz 2022.1
+- Compatibility with Domoticz 2022.1 TCP and MQTT plugin
