@@ -58,7 +58,9 @@ If defined (line uncommented):
 #define MQTT_USER ""								// MQTT Server user
 #define MQTT_PASSWORD ""							// MQTT Server password   
 #define MQTT_PUBLISH_TOPIC "rflink"					// MQTT topic to publish to (data from RFLink to MQTT)
+#define MQTT_PUBLISH_DOMOTICZ_TOPIC "rflink/in"          // MQTT topic to publish RAW data to Domoticz (data from RFLink to Domoticz MQTT)
 #define MQTT_RFLINK_CMD_TOPIC "rflink/cmd"			// MQTT topic to listen to (commands from MQTT to RFLink)
+#define MQTT_RFLINK_CMD_DOMOTICZ_TOPIC "rflink/out"      // MQTT topic to listen to RAW Domoticz data (commands from Domoticz MQTT to RFLink)
 #define MQTT_RETAIN_FLAG false						// If true, messages will be published with the retain flag
 #define MQTT_WILL_TOPIC "rflink/online"				// MQTT last will topic ; "rflink/status"
 #define MQTT_WILL_ONLINE "1"						// MQTT last will topic value online; "online"
@@ -71,6 +73,14 @@ If defined (line uncommented):
 
 #define MQTT_MEGA_RESET_TOPIC "rflink/mega_reset"	// MQTT topic whereto publish a 1s pulse when resetting RFLink Mega
 
+/*********************************************************************************
+ * TCP Bridge parameters
+/*********************************************************************************/
+const int tcp_port = 23;
+
+#ifndef TCP_BRIDGE_CONNECTIONS
+#define TCP_BRIDGE_CONNECTIONS 2    // number of maximum parallel connections
+#endif
 
 //********************************************************************************
 // ID filtering

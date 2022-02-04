@@ -1,11 +1,14 @@
 # espRFLinkMQTT
 
 espRFLinkMQTT acts as a gateway between a [RFLink](http://rflink.nl) board and a MQTT server. It works on ESP8266: ESP01, D1 mini, NodeMCU, RFLink WiFi board, ...
+It's compatible wiht Domoticz 2022.1 RFLink MQTT hardware
 
 It includes the following main functions:
 
-- Receive data from RFLink board and forward to MQTT server in JSON format
+- Receive data from RFLink board and forward to MQTT server in JSON and RAW format (separate topics) 
+- Receive data from RFLink board and forward to RAW format to TCP socket
 - Receive commands from MQTT server and forward to RFLink board
+- Receive commands from TCP socket and forward to RFLink board
 - Perform conversions so that data on MQTT server can be used directly (hexadecimal to decimal for example)
 - See data directly in web interface, send commands, change settings
 - Configure which IDs should be filtered and sent to MQTT server
@@ -19,7 +22,7 @@ RFLink-Hardware is required, official or DIY. For software, there are two option
 
 ### 1. Use already compiled firmware
 
-- Download firmware (.bin file)
+- Download firmware (.bin file) - file located in bin directory for: Wemos D1 mini pro or generic esp8266 (ex. ESP01) module
 - Upload firmware to ESP and reset
 - Wait for 1 minute
 - Connect to Wifi network espRFLinkMQTT
@@ -68,13 +71,14 @@ as JSON:
 ```
 {TEMP:"6.7",HUM:"29",BAT:"OK"};
 ```
+It sends also raw received packet from RFLink to separate MQTT topic (for compatibility with Domoticz 2022.1)
 
 ### Send command with MQTT
 
 Publish the command according to [RFLink documentation](http://www.rflink.nl/blog2/protref) to the topic:
 
 ```
-rflink/cmd
+rflink/cmd or rflink/out
 ```
 
 e.g.
@@ -121,3 +125,4 @@ The following capabilities were added:
 - Publish WiFi RSSI along with uptime
 - RFLink WiFi board whatchdog support
 - Options to export ID filtering configuration
+- Compatibility with Domoticz 2022.1 TCP and MQTT plugin

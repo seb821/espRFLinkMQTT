@@ -99,6 +99,14 @@ const int eepromConfigMaxSize = max(3840, (int) sizeof(eepromConfig));		// Lengt
 
 _matrix matrix[FILTERED_ID_SIZE];
 
+bool tcp_busy;    // did we have some data to transfer to TCP?
+
+WiFiServer   *server_tcp = nullptr;
+WiFiClient   client_tcp[TCP_BRIDGE_CONNECTIONS];
+uint8_t      client_next = 0;
+uint8_t     *tcp_buf = nullptr;     // data transfer buffer
+int32_t      buf_len;
+
 // main input / output buffers
 char BUFFER [BUFFER_SIZE];
 char JSON   [BUFFER_SIZE];
@@ -108,6 +116,11 @@ char MQTT_NAME[MAX_DATA_LEN];
 char MQTT_ID  [MAX_ID_LEN+1];
 char MQTT_TOPIC[MAX_TOPIC_LEN];
 char FIELD_BUF[MAX_DATA_LEN];
+
+//TCP buffors
+char BUFFER_TCP [TCP_BRIDGE_CONNECTIONS][BUFFER_SIZE];
+int32_t BUFFER_TCP_LEN [TCP_BRIDGE_CONNECTIONS];
+bool TCP_DATA_READY[TCP_BRIDGE_CONNECTIONS];
 
 // Serial iterator counter
 int CPT;
